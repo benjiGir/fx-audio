@@ -2,14 +2,17 @@
 
 ```sh
 pnpm install
-pnpm lint
-pnpm typecheck
+pnpm lint         # oxlint
+pnpm format:check # oxfmt (pnpm format to fix)
+pnpm typecheck    # TypeScript 7
 pnpm coverage     # unit tests, coverage thresholds: 95%
 pnpm test:browser # real browsers through Playwright (all three engines by default)
 pnpm api          # public API against the reports committed in api/ (pnpm api:update after a deliberate change)
 pnpm mutation     # mutation testing with Stryker, break threshold: 80% (about 12 minutes, not run in CI)
 pnpm build
 pnpm check:package
+pnpm bench:size   # bundle size against Howler, see the benchmark page
+pnpm bench:play   # cost of play() against Howler, in a real Chromium
 pnpm docs:dev     # this site, with live reload (generates the API reference first)
 pnpm docs:build   # the site as it is published
 ```
