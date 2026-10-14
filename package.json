@@ -42,7 +42,9 @@
     "test:browser": "vitest run --project \"browser-*\"",
     "mutation": "stryker run",
     "api": "pnpm build && node scripts/api-report.mjs",
-    "api:update": "pnpm build && node scripts/api-report.mjs --update"
+    "api:update": "pnpm build && node scripts/api-report.mjs --update",
+    "bench:size": "node bench/size.mjs",
+    "bench:play": "node bench/play.mjs"
   },
   "peerDependencies": {
     "effect": "^4.0.4",
@@ -61,10 +63,12 @@
     "@stryker-mutator/core": "10.0.0",
     "@stryker-mutator/typescript-checker": "10.0.0",
     "@stryker-mutator/vitest-runner": "10.0.0",
+    "@types/howler": "2.2.13",
     "@types/node": "^22.0.0",
     "@vitest/browser-playwright": "4.1.11",
     "@vitest/coverage-v8": "4.1.11",
     "effect": "4.0.4",
+    "howler": "2.2.4",
     "node-web-audio-api": "2.2.0",
     "playwright": "1.64.1",
     "publint": "0.3.25",
