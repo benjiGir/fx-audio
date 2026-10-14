@@ -53,14 +53,10 @@ describe("resuming on a user gesture", () => {
     const removed = vi.spyOn(document, "removeEventListener")
     vi.stubGlobal("document", document)
     const ctx = { state: "suspended", resume: vi.fn(resume), close: () => Promise.resolve() }
-    vi.stubGlobal(
-      "AudioContext",
-      class {
-        constructor() {
-          return ctx
-        }
-      }
-    )
+    // `new` on a plain function that returns an object gives that object.
+    vi.stubGlobal("AudioContext", function AudioContext() {
+      return ctx
+    })
     const gesture = async (type = "pointerdown") => {
       document.dispatchEvent(new Event(type))
       await new Promise((resolve) => setTimeout(resolve, 0))
