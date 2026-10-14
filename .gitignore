@@ -4,3 +4,5 @@ dist/
 coverage/
 .stryker-tmp/
 reports/
+docs/.vitepress/cache/
+docs/.vitepress/dist/

@@ -42,7 +42,10 @@
     "test:browser": "vitest run --project \"browser-*\"",
     "mutation": "stryker run",
     "api": "pnpm build && node scripts/api-report.mjs",
-    "api:update": "pnpm build && node scripts/api-report.mjs --update"
+    "api:update": "pnpm build && node scripts/api-report.mjs --update",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "peerDependencies": {
     "effect": "^4.0.4",
@@ -70,6 +73,7 @@
     "publint": "0.3.25",
     "tsdown": "0.23.1",
     "typescript": "^5.9.0",
+    "vitepress": "1.6.4",
     "vitest": "4.1.11"
   }
 }
