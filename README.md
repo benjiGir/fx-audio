@@ -79,6 +79,27 @@ const voice = yield* audio.play(sound, { pan: -1 })
 yield* voice.setPan(1)
 ```
 
+## 3D position
+
+`PlayOptions.spatial` puts a voice in 3D space, heard from the listener. Axes are Web Audio's: x to the right, y up, z towards the listener.
+Only `position` is required; every other attribute keeps the Web Audio default (equal-power panning, inverse distance model, reference distance 1, rolloff 1, omnidirectional source).
+`voice.setPosition(position)` moves the voice afterwards, also one that started without `spatial`. `audio.listener` moves the listener, which starts at the origin facing -z with +y up.
+Positions are unitless: scale them as you like and tune `refDistance` to match.
+
+```ts
+const voice = yield* audio.play(sound, {
+  spatial: { position: { x: 4, y: 0, z: -2 }, distanceModel: "linear", maxDistance: 30 }
+})
+yield* voice.setPosition({ x: -4, y: 0, z: -2 })
+yield* audio.listener.setPosition({ x: 1, y: 0, z: 0 })
+yield* audio.listener.setOrientation({ x: 1, y: 0, z: 0 }, { x: 0, y: 1, z: 0 })
+```
+
+Attributes: `orientation`, `panningModel` (`"equalpower"` or `"HRTF"`), `distanceModel` (`"linear"`, `"inverse"` or `"exponential"`),
+`refDistance`, `maxDistance`, `rolloffFactor`, `coneInnerAngle`, `coneOuterAngle` and `coneOuterGain`.
+A non-finite coordinate is a defect for the setters. `pan` and `spatial` can be combined: the stereo pan is applied first.
+The panner is only built for voices that use one.
+
 ## Codecs
 
 The browser decodes whatever the browser supports. Under Node, `node-web-audio-api` decodes WAV, MP3, Ogg Vorbis, FLAC and AAC in M4A (when the `moov` atom comes first),

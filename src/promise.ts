@@ -6,9 +6,9 @@ import * as Schema from "effect/Schema"
 import * as Scope from "effect/Scope"
 import type { AudioContextService } from "./context.ts"
 import { BrowserAudioContextLive } from "./context.ts"
-import type { Group, Voice } from "./core.ts"
+import type { Group, Listener, Voice } from "./core.ts"
 import { Audio, AudioLive } from "./core.ts"
-import type { Sound, SpriteSheet } from "./model.ts"
+import type { Sound, SpriteSheet, Vector3 } from "./model.ts"
 import { PlayOptions } from "./model.ts"
 
 /** Promise facade for users who do not use Effect. Same engine, no Effect types. */
@@ -18,6 +18,14 @@ export interface PromiseVoice {
   fadeTo(volume: number, seconds: number): void
   /** Throws a `SchemaError` outside -1 (left) to 1 (right). */
   setPan(pan: number): void
+  /** Move the voice in 3D space. Throws a `SchemaError` on a non-finite coordinate. */
+  setPosition(position: Vector3): void
+}
+
+/** Where the sound is heard from. Both methods throw a `SchemaError` on a non-finite coordinate. */
+export interface PromiseListener {
+  setPosition(position: Vector3): void
+  setOrientation(forward: Vector3, up: Vector3): void
 }
 
 /** A mixer bus: volume, fade and mute for every voice played through it. */
@@ -40,6 +48,8 @@ export interface PromiseAudio extends PromiseGroup {
   readonly master: PromiseGroup
   /** The group called `name`, created on first use and routed through the master. The same name gives the same object. */
   group(name: string): PromiseGroup
+  /** The listener spatial voices are heard from. */
+  readonly listener: PromiseListener
   dispose(): Promise<void>
 }
 
@@ -55,7 +65,8 @@ export const createAudio = (
     ended: runtime.runPromise(voice.ended),
     stop: () => runtime.runSync(voice.stop),
     fadeTo: (volume, seconds) => runtime.runSync(voice.fadeTo(volume, `${seconds} seconds`)),
-    setPan: (pan) => runtime.runSync(voice.setPan(pan))
+    setPan: (pan) => runtime.runSync(voice.setPan(pan)),
+    setPosition: (position) => runtime.runSync(voice.setPosition(position))
   })
   const inScope = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>) =>
     runtime.runSync(effect.pipe(Effect.provideService(Scope.Scope, scope)))
@@ -70,10 +81,15 @@ export const createAudio = (
   })
   const audio = runtime.runSync(Audio.use(Effect.succeed))
   const master = wrapGroup(audio.master)
+  const listener = audio.listener satisfies Listener
   const groups = new Map<string, PromiseGroup>()
   return {
     ...master,
     master,
+    listener: {
+      setPosition: (position) => runtime.runSync(listener.setPosition(position)),
+      setOrientation: (forward, up) => runtime.runSync(listener.setOrientation(forward, up))
+    },
     load: (url, signal) =>
       runtime.runPromise(audio.load(url), signal === undefined ? undefined : { signal }),
     group: (name) => {

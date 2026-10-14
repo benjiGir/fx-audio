@@ -37,13 +37,45 @@ export interface StereoPannerNodeLike extends AudioNodeLike {
   readonly pan: AudioParamLike
 }
 
+export interface PannerNodeLike extends AudioNodeLike {
+  readonly positionX: AudioParamLike
+  readonly positionY: AudioParamLike
+  readonly positionZ: AudioParamLike
+  readonly orientationX: AudioParamLike
+  readonly orientationY: AudioParamLike
+  readonly orientationZ: AudioParamLike
+  panningModel: "equalpower" | "HRTF"
+  distanceModel: "linear" | "inverse" | "exponential"
+  refDistance: number
+  maxDistance: number
+  rolloffFactor: number
+  coneInnerAngle: number
+  coneOuterAngle: number
+  coneOuterGain: number
+}
+
+/** The one listener of a context: where the sound is heard from. */
+export interface AudioListenerLike {
+  readonly positionX: AudioParamLike
+  readonly positionY: AudioParamLike
+  readonly positionZ: AudioParamLike
+  readonly forwardX: AudioParamLike
+  readonly forwardY: AudioParamLike
+  readonly forwardZ: AudioParamLike
+  readonly upX: AudioParamLike
+  readonly upY: AudioParamLike
+  readonly upZ: AudioParamLike
+}
+
 export interface AudioContextLike {
   readonly currentTime: number
   readonly state: string
   readonly destination: AudioNodeLike
+  readonly listener: AudioListenerLike
   createBufferSource(): SourceNodeLike
   createGain(): GainNodeLike
   createStereoPanner(): StereoPannerNodeLike
+  createPanner(): PannerNodeLike
   decodeAudioData(data: ArrayBuffer): Promise<AudioBuffer>
   resume(): Promise<void>
   close(): Promise<void>

@@ -1,6 +1,13 @@
 import { assert, describe, it } from "@effect/vitest"
 import * as Schema from "effect/Schema"
-import { PlayOptions, Sound, SpriteSegment, SpriteSheet } from "../src/index.ts"
+import {
+  PlayOptions,
+  Sound,
+  SpatialOptions,
+  SpriteSegment,
+  SpriteSheet,
+  Vector3
+} from "../src/index.ts"
 
 const decodeOptions = Schema.decodeUnknownSync(PlayOptions)
 
@@ -35,6 +42,57 @@ describe("PlayOptions", () => {
   it("validates when constructed", () => {
     assert.strictEqual(new PlayOptions({ volume: 0 }).volume, 0)
     assert.throws(() => new PlayOptions({ rate: -2 }))
+  })
+})
+
+describe("Vector3", () => {
+  it("keeps three finite coordinates", () => {
+    const v = new Vector3({ x: 1, y: -2, z: 0.5 })
+    assert.deepStrictEqual({ ...v }, { x: 1, y: -2, z: 0.5 })
+  })
+
+  it("rejects NaN and infinity", () => {
+    assert.throws(() => new Vector3({ x: Number.NaN, y: 0, z: 0 }))
+    assert.throws(() => new Vector3({ x: 0, y: Number.POSITIVE_INFINITY, z: 0 }))
+  })
+})
+
+describe("SpatialOptions", () => {
+  const position = { x: 0, y: 0, z: 0 }
+  const decodeSpatial = Schema.decodeUnknownSync(SpatialOptions)
+
+  it("needs a position and leaves the rest optional", () => {
+    assert.instanceOf(decodeSpatial({ position }).position, Vector3)
+    assert.throws(() => decodeSpatial({}))
+  })
+
+  it("nests in PlayOptions", () => {
+    assert.strictEqual(
+      decodeOptions({ spatial: { position, rolloffFactor: 2 } }).spatial?.rolloffFactor,
+      2
+    )
+    assert.throws(() => decodeOptions({ spatial: { position: { x: 0 } } }))
+  })
+
+  it("accepts the Web Audio models and rejects other names", () => {
+    assert.strictEqual(decodeSpatial({ position, panningModel: "HRTF" }).panningModel, "HRTF")
+    assert.strictEqual(
+      decodeSpatial({ position, distanceModel: "exponential" }).distanceModel,
+      "exponential"
+    )
+    assert.throws(() => decodeSpatial({ position, panningModel: "hrtf" }))
+    assert.throws(() => decodeSpatial({ position, distanceModel: "cubic" }))
+  })
+
+  it("keeps distances and angles in their Web Audio ranges", () => {
+    assert.strictEqual(decodeSpatial({ position, refDistance: 0 }).refDistance, 0)
+    assert.throws(() => decodeSpatial({ position, refDistance: -1 }))
+    assert.throws(() => decodeSpatial({ position, maxDistance: 0 }))
+    assert.throws(() => decodeSpatial({ position, rolloffFactor: -0.1 }))
+    assert.strictEqual(decodeSpatial({ position, coneOuterAngle: 360 }).coneOuterAngle, 360)
+    assert.throws(() => decodeSpatial({ position, coneInnerAngle: 361 }))
+    assert.throws(() => decodeSpatial({ position, coneOuterAngle: -1 }))
+    assert.throws(() => decodeSpatial({ position, coneOuterGain: 1.1 }))
   })
 })
 

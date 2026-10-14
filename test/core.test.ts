@@ -11,11 +11,12 @@ import {
   Sound,
   SpriteSegment,
   SpriteSheet,
-  UnknownSprite
+  UnknownSprite,
+  Vector3
 } from "../src/index.ts"
 import type { FakeContext } from "../src/testing.ts"
 import { FakeAudioContextLive, makeFakeContext } from "../src/testing.ts"
-import { gainAt, pannerAt, voiceGains } from "./helpers/graph.ts"
+import { gainAt, pannerAt, spatialAt, voiceGains } from "./helpers/graph.ts"
 
 const buffer = { duration: 1 } as AudioBuffer
 const sound = new Sound({ buffer, source: "test.wav" })
@@ -596,5 +597,238 @@ describe("stereo pan", () => {
       yield* audio.play(sound, { pan: 0.3 }).pipe(Effect.scoped)
       assert.strictEqual(ctx.panners[0]?.disconnects, 1)
     }).pipe(Effect.provide(layer))
+  })
+})
+
+describe("3D position", () => {
+  const setup = () => {
+    const ctx = makeFakeContext()
+    return { ctx, layer: audioLayer(ctx) }
+  }
+  const at = (x: number, y: number, z: number) => new Vector3({ x, y, z })
+
+  it.effect("builds no spatial panner for a voice that does not ask for one", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.play(sound)
+      assert.strictEqual(ctx.spatialPanners.length, 0)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("routes a voice through a panner placed at its position", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.play(sound, { spatial: { position: at(1, 2, 3) } })
+      const panner = spatialAt(ctx, 0)
+      assert.deepStrictEqual(
+        [panner.positionX.value, panner.positionY.value, panner.positionZ.value],
+        [1, 2, 3]
+      )
+      assert.deepStrictEqual(ctx.sources[0]?.connections, [panner])
+      assert.deepStrictEqual(panner.connections, [gainAt(ctx, 1)])
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("leaves the engine defaults alone unless an attribute is given", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.play(sound, { spatial: { position: at(0, 0, 0) } })
+      const panner = spatialAt(ctx, 0)
+      assert.strictEqual(panner.panningModel, "equalpower")
+      assert.strictEqual(panner.distanceModel, "inverse")
+      assert.strictEqual(panner.refDistance, 1)
+      assert.strictEqual(panner.maxDistance, 10000)
+      assert.strictEqual(panner.rolloffFactor, 1)
+      assert.strictEqual(panner.coneInnerAngle, 360)
+      assert.strictEqual(panner.coneOuterAngle, 360)
+      assert.strictEqual(panner.coneOuterGain, 0)
+      assert.strictEqual(panner.orientationX.calls.length, 0)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("applies every attribute that is given", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.play(sound, {
+        spatial: {
+          position: at(0, 0, 0),
+          orientation: at(0, 0, -1),
+          panningModel: "HRTF",
+          distanceModel: "linear",
+          refDistance: 2,
+          maxDistance: 50,
+          rolloffFactor: 0.5,
+          coneInnerAngle: 30,
+          coneOuterAngle: 90,
+          coneOuterGain: 0.2
+        }
+      })
+      const panner = spatialAt(ctx, 0)
+      assert.deepStrictEqual(
+        [panner.orientationX.value, panner.orientationY.value, panner.orientationZ.value],
+        [0, 0, -1]
+      )
+      assert.strictEqual(panner.panningModel, "HRTF")
+      assert.strictEqual(panner.distanceModel, "linear")
+      assert.strictEqual(panner.refDistance, 2)
+      assert.strictEqual(panner.maxDistance, 50)
+      assert.strictEqual(panner.rolloffFactor, 0.5)
+      assert.strictEqual(panner.coneInnerAngle, 30)
+      assert.strictEqual(panner.coneOuterAngle, 90)
+      assert.strictEqual(panner.coneOuterGain, 0.2)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("setPosition moves an existing panner", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const voice = yield* audio.play(sound, { spatial: { position: at(0, 0, 0) } })
+      yield* voice.setPosition(at(4, 5, 6))
+      const panner = spatialAt(ctx, 0)
+      assert.strictEqual(ctx.spatialPanners.length, 1)
+      assert.deepStrictEqual(
+        [panner.positionX.value, panner.positionY.value, panner.positionZ.value],
+        [4, 5, 6]
+      )
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("setPosition inserts the panner on a voice that started without one", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const voice = yield* audio.play(sound)
+      yield* voice.setPosition(at(1, 0, 0))
+      yield* voice.setPosition(at(2, 0, 0))
+      const panner = spatialAt(ctx, 0)
+      assert.strictEqual(ctx.spatialPanners.length, 1)
+      assert.strictEqual(ctx.sources[0]?.disconnects, 1)
+      assert.deepStrictEqual(ctx.sources[0]?.connections.at(-1), panner)
+      assert.deepStrictEqual(panner.connections, [gainAt(ctx, 1)])
+      assert.strictEqual(panner.positionX.value, 2)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("chains the stereo panner before the spatial one when a voice has both", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.play(sound, { pan: 0.5, spatial: { position: at(1, 0, 0) } })
+      const stereo = pannerAt(ctx, 0)
+      const spatial = spatialAt(ctx, 0)
+      assert.deepStrictEqual(ctx.sources[0]?.connections, [stereo])
+      assert.deepStrictEqual(stereo.connections, [spatial])
+      assert.deepStrictEqual(spatial.connections, [gainAt(ctx, 1)])
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("rewires a stereo-panned voice when a spatial panner joins it", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const voice = yield* audio.play(sound, { pan: -1 })
+      yield* voice.setPosition(at(1, 0, 0))
+      const stereo = pannerAt(ctx, 0)
+      const spatial = spatialAt(ctx, 0)
+      assert.strictEqual(stereo.disconnects, 1)
+      assert.deepStrictEqual(stereo.connections, [gainAt(ctx, 1), spatial])
+      assert.deepStrictEqual(spatial.connections, [gainAt(ctx, 1)])
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("rewires a spatial voice when a stereo panner joins it", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const voice = yield* audio.play(sound, { spatial: { position: at(1, 0, 0) } })
+      yield* voice.setPan(1)
+      const stereo = pannerAt(ctx, 0)
+      const spatial = spatialAt(ctx, 0)
+      assert.strictEqual(spatial.disconnects, 1)
+      assert.deepStrictEqual(ctx.sources[0]?.connections.at(-1), stereo)
+      assert.deepStrictEqual(stereo.connections, [spatial])
+      assert.deepStrictEqual(spatial.connections.at(-1), gainAt(ctx, 1))
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("dies on a coordinate that is not finite and builds nothing", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const voice = yield* audio.play(sound)
+      const exits = yield* Effect.all([
+        Effect.exit(voice.setPosition({ x: Number.NaN, y: 0, z: 0 })),
+        Effect.exit(voice.setPosition({ x: 0, y: Number.POSITIVE_INFINITY, z: 0 }))
+      ])
+      for (const exit of exits) assert.isTrue(exit._tag === "Failure")
+      assert.strictEqual(ctx.spatialPanners.length, 0)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("releases the spatial panner with the voice", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.play(sound, { spatial: { position: at(0, 0, 0) } }).pipe(Effect.scoped)
+      assert.strictEqual(ctx.spatialPanners[0]?.disconnects, 1)
+    }).pipe(Effect.provide(layer))
+  })
+})
+
+describe("listener", () => {
+  it.effect("setPosition places the listener", () => {
+    const ctx = makeFakeContext()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.listener.setPosition(new Vector3({ x: 1, y: 2, z: 3 }))
+      const { listener } = ctx
+      assert.deepStrictEqual(
+        [listener.positionX.value, listener.positionY.value, listener.positionZ.value],
+        [1, 2, 3]
+      )
+    }).pipe(Effect.provide(audioLayer(ctx)))
+  })
+
+  it.effect("setOrientation sets the facing and up directions", () => {
+    const ctx = makeFakeContext()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.listener.setOrientation(
+        new Vector3({ x: 1, y: 0, z: 0 }),
+        new Vector3({ x: 0, y: 0, z: 1 })
+      )
+      const { listener } = ctx
+      assert.deepStrictEqual(
+        [listener.forwardX.value, listener.forwardY.value, listener.forwardZ.value],
+        [1, 0, 0]
+      )
+      assert.deepStrictEqual(
+        [listener.upX.value, listener.upY.value, listener.upZ.value],
+        [0, 0, 1]
+      )
+    }).pipe(Effect.provide(audioLayer(ctx)))
+  })
+
+  it.effect("dies on a coordinate that is not finite and changes nothing", () => {
+    const ctx = makeFakeContext()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      // A plain object: building a `Vector3` with a NaN coordinate would already throw.
+      const bad = { x: Number.NaN, y: 0, z: 0 }
+      const good = new Vector3({ x: 1, y: 1, z: 1 })
+      const exits = yield* Effect.all([
+        Effect.exit(audio.listener.setPosition(bad)),
+        Effect.exit(audio.listener.setOrientation(good, bad)),
+        Effect.exit(audio.listener.setOrientation(bad, good))
+      ])
+      for (const exit of exits) assert.isTrue(exit._tag === "Failure")
+      assert.strictEqual(ctx.listener.positionX.value, 1)
+      assert.strictEqual(ctx.listener.forwardX.value, 1)
+    }).pipe(Effect.provide(audioLayer(ctx)))
   })
 })

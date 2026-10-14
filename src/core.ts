@@ -9,8 +9,8 @@ import * as Scope from "effect/Scope"
 import * as Semaphore from "effect/Semaphore"
 import type {
   AudioNodeLike,
-  GainNodeLike,
-  SourceNodeLike,
+  AudioParamLike,
+  PannerNodeLike,
   StereoPannerNodeLike
 } from "./context.ts"
 import { AudioContextService, BrowserAudioContextLive } from "./context.ts"
@@ -25,8 +25,10 @@ import {
   Pan,
   type PlayOptions,
   Sound,
+  SpatialOptions,
   type SpriteSegment,
   type SpriteSheet,
+  Vector3,
   Volume
 } from "./model.ts"
 
@@ -41,6 +43,23 @@ export interface Voice {
    * outside that range. A voice started without `pan` gets its panner on the first call.
    */
   readonly setPan: (pan: number) => Effect.Effect<void>
+  /**
+   * Move this voice in 3D space, relative to the listener. Dies on a non-finite
+   * coordinate. A voice started without `spatial` gets a spatial panner on the first call,
+   * with the Web Audio defaults for everything but the position.
+   */
+  readonly setPosition: (position: Vector3) => Effect.Effect<void>
+}
+
+/**
+ * Where the sound is heard from, shared by every voice. At the start it sits at the
+ * origin facing -z with +y up, as in Web Audio.
+ */
+export interface Listener {
+  /** Dies on a non-finite coordinate. */
+  readonly setPosition: (position: Vector3) => Effect.Effect<void>
+  /** `forward` is the way the listener faces, `up` the top of their head. Dies on a non-finite coordinate. */
+  readonly setOrientation: (forward: Vector3, up: Vector3) => Effect.Effect<void>
 }
 
 /**
@@ -66,6 +85,16 @@ export interface Group {
 
 const decodeVolume = Schema.decodeUnknownSync(Volume)
 const decodePan = Schema.decodeUnknownSync(Pan)
+const decodeVector = Schema.decodeUnknownSync(Vector3)
+
+const setVector = (
+  params: readonly [AudioParamLike, AudioParamLike, AudioParamLike],
+  { x, y, z }: Vector3
+) => {
+  params[0].value = x
+  params[1].value = y
+  params[2].value = z
+}
 
 export class Audio extends Context.Service<
   Audio,
@@ -93,6 +122,8 @@ export class Audio extends Context.Service<
      * Asking for the same name again returns the same group. Groups are released with the layer.
      */
     group(name: string): Effect.Effect<Group>
+    /** The listener of the audio context, which every spatial voice is heard from. */
+    readonly listener: Listener
   }
 >()("fx-audio/Audio") {}
 
@@ -135,12 +166,29 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       return yield* decode(bytes, url)
     })
 
-    // source -> [panner] -> gain: the panner is only built for voices that ask for one.
-    const connectPanner = (source: SourceNodeLike, gain: GainNodeLike, pan: number) => {
+    const createStereo = (pan: number) => {
       const panner = ctx.createStereoPanner()
       panner.pan.value = pan
-      source.connect(panner)
-      panner.connect(gain)
+      return panner
+    }
+
+    const createSpatial = (spatial: SpatialOptions) => {
+      const panner = ctx.createPanner()
+      setVector([panner.positionX, panner.positionY, panner.positionZ], spatial.position)
+      if (spatial.orientation !== undefined) {
+        setVector(
+          [panner.orientationX, panner.orientationY, panner.orientationZ],
+          spatial.orientation
+        )
+      }
+      if (spatial.panningModel !== undefined) panner.panningModel = spatial.panningModel
+      if (spatial.distanceModel !== undefined) panner.distanceModel = spatial.distanceModel
+      if (spatial.refDistance !== undefined) panner.refDistance = spatial.refDistance
+      if (spatial.maxDistance !== undefined) panner.maxDistance = spatial.maxDistance
+      if (spatial.rolloffFactor !== undefined) panner.rolloffFactor = spatial.rolloffFactor
+      if (spatial.coneInnerAngle !== undefined) panner.coneInnerAngle = spatial.coneInnerAngle
+      if (spatial.coneOuterAngle !== undefined) panner.coneOuterAngle = spatial.coneOuterAngle
+      if (spatial.coneOuterGain !== undefined) panner.coneOuterGain = spatial.coneOuterGain
       return panner
     }
 
@@ -151,20 +199,29 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       output: AudioNodeLike
     ): Effect.fn.Return<Voice, never, Scope.Scope> {
       const ended = yield* Deferred.make<void>()
-      const { source, gain, route } = yield* Effect.acquireRelease(
+      const { source, gain, route, wire } = yield* Effect.acquireRelease(
         Effect.sync(() => {
           const source = ctx.createBufferSource()
           const gain = ctx.createGain()
-          const route: { panner: StereoPannerNodeLike | undefined } = { panner: undefined }
+          // The optional stages between source and gain, in signal order.
+          const route: { stereo?: StereoPannerNodeLike; spatial?: PannerNodeLike } = {}
+          // source -> [stereo] -> [spatial] -> gain: a stage is only built for voices that ask for one.
+          const wire = () => {
+            let from: AudioNodeLike = source
+            for (const stage of [route.stereo, route.spatial]) {
+              if (stage === undefined) continue
+              from.connect(stage)
+              from = stage
+            }
+            from.connect(gain)
+          }
           source.buffer = sound.buffer
           source.loop = options.loop ?? segment?.loop ?? false
           if (options.rate !== undefined) source.playbackRate.value = options.rate
           gain.gain.value = options.volume ?? 1
-          if (options.pan === undefined) {
-            source.connect(gain)
-          } else {
-            route.panner = connectPanner(source, gain, options.pan)
-          }
+          if (options.pan !== undefined) route.stereo = createStereo(options.pan)
+          if (options.spatial !== undefined) route.spatial = createSpatial(options.spatial)
+          wire()
           gain.connect(output)
           source.onended = () => Deferred.doneUnsafe(ended, Effect.void)
           if (segment === undefined) {
@@ -182,7 +239,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
               source.start(0, start, duration)
             }
           }
-          return { source, gain, route }
+          return { source, gain, route, wire }
         }),
         ({ source, gain, route }) =>
           Effect.suspend(() => {
@@ -193,11 +250,19 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
               // already stopped
             }
             source.disconnect()
-            route.panner?.disconnect()
+            route.stereo?.disconnect()
+            route.spatial?.disconnect()
             gain.disconnect()
             return Deferred.succeed(ended, undefined)
           })
       )
+      // Adding a stage means breaking the links of the nodes already chained, then chaining again.
+      const rewire = () => {
+        source.disconnect()
+        route.stereo?.disconnect()
+        route.spatial?.disconnect()
+        wire()
+      }
       return {
         ended: Deferred.await(ended),
         stop: Effect.sync(() => {
@@ -212,11 +277,22 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
         setPan: (requested) =>
           Effect.sync(() => {
             const pan = decodePan(requested)
-            if (route.panner === undefined) {
-              source.disconnect()
-              route.panner = connectPanner(source, gain, pan)
+            if (route.stereo === undefined) {
+              route.stereo = createStereo(pan)
+              rewire()
             } else {
-              route.panner.pan.value = pan
+              route.stereo.pan.value = pan
+            }
+          }),
+        setPosition: (requested) =>
+          Effect.sync(() => {
+            const position = decodeVector(requested)
+            if (route.spatial === undefined) {
+              route.spatial = createSpatial(new SpatialOptions({ position }))
+              rewire()
+            } else {
+              const { positionX, positionY, positionZ } = route.spatial
+              setVector([positionX, positionY, positionZ], position)
             }
           })
       }
@@ -314,13 +390,32 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       }).pipe(Semaphore.withPermit(creating))
     })
 
+    const { listener } = ctx
+    const listenerService: Listener = {
+      setPosition: (requested) =>
+        Effect.sync(() => {
+          setVector(
+            [listener.positionX, listener.positionY, listener.positionZ],
+            decodeVector(requested)
+          )
+        }),
+      setOrientation: (forward, up) =>
+        Effect.sync(() => {
+          const facing = decodeVector(forward)
+          const top = decodeVector(up)
+          setVector([listener.forwardX, listener.forwardY, listener.forwardZ], facing)
+          setVector([listener.upX, listener.upY, listener.upZ], top)
+        })
+    }
+
     return Audio.of({
       decode,
       load,
       play: master.play,
       playSprite: master.playSprite,
       master,
-      group
+      group,
+      listener: listenerService
     })
   })
 )

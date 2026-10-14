@@ -1,13 +1,15 @@
 export type {
   AudioContextLike,
+  AudioListenerLike,
   AudioNodeLike,
   AudioParamLike,
   GainNodeLike,
+  PannerNodeLike,
   SourceNodeLike,
   StereoPannerNodeLike
 } from "./context.ts"
 export { AudioContextService, BrowserAudioContextLive } from "./context.ts"
-export type { Group, Voice } from "./core.ts"
+export type { Group, Listener, Voice } from "./core.ts"
 export { Audio, AudioBrowserLive, AudioLive } from "./core.ts"
 export {
   DecodeFailure,
@@ -16,4 +18,4 @@ export {
   UnknownSprite,
   UnsupportedFormat
 } from "./errors.ts"
-export { PlayOptions, Sound, SpriteSegment, SpriteSheet } from "./model.ts"
+export { PlayOptions, Sound, SpatialOptions, SpriteSegment, SpriteSheet, Vector3 } from "./model.ts"
