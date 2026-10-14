@@ -127,6 +127,130 @@ describe("Audio.load", () => {
     }).pipe(Effect.provide(layer()))
   )
 
+  describe("local files", () => {
+    // One fake `readFile` and one fake `fetch`, so each test sees which of the two was used.
+    const setup = () => {
+      const read: Array<string> = []
+      const fetched: Array<string> = []
+      const signals: Array<AbortSignal> = []
+      vi.stubGlobal("fetch", (url: string) => {
+        fetched.push(url)
+        return Promise.resolve(new Response(bytes))
+      })
+      const layer = AudioLive.pipe(
+        Layer.provide(
+          FakeAudioContextLive(decodingContext(), {
+            readFile: (location, signal) => {
+              read.push(location)
+              signals.push(signal)
+              return Promise.resolve(bytes)
+            }
+          })
+        )
+      )
+      return { read, fetched, signals, layer }
+    }
+
+    const sources = [
+      ["a file: URL", "file:///sounds/a.wav"],
+      ["an absolute path", "/sounds/a.wav"],
+      ["a relative path", "./sounds/a.wav"],
+      ["a bare file name", "a.wav"],
+      ["a Windows path", "C:\\sounds\\a.wav"]
+    ] as const
+
+    for (const [name, source] of sources) {
+      it.effect(`reads ${name} from disk instead of fetching it`, () => {
+        const { read, fetched, layer } = setup()
+        return Effect.gen(function* () {
+          const audio = yield* Audio
+          const result = yield* audio.load(source)
+          assert.deepStrictEqual(read, [source])
+          assert.deepStrictEqual(fetched, [])
+          assert.strictEqual(result.source, source)
+          assert.strictEqual(result.buffer, buffer)
+        }).pipe(Effect.provide(layer))
+      })
+    }
+
+    for (const url of [
+      "https://x/a.wav",
+      "http://x/a.wav",
+      "data:audio/wav;base64,AAAA",
+      "blob:x"
+    ]) {
+      it.effect(`still fetches ${url}`, () => {
+        const { read, fetched, layer } = setup()
+        return Effect.gen(function* () {
+          const audio = yield* Audio
+          yield* audio.load(url)
+          assert.deepStrictEqual(fetched, [url])
+          assert.deepStrictEqual(read, [])
+        }).pipe(Effect.provide(layer))
+      })
+    }
+
+    it.effect("fetches a path when the platform cannot read files", () =>
+      Effect.gen(function* () {
+        const fetched: Array<string> = []
+        vi.stubGlobal("fetch", (url: string) => {
+          fetched.push(url)
+          return Promise.resolve(new Response(bytes))
+        })
+        const audio = yield* Audio
+        yield* audio.load("sounds/a.wav")
+        assert.deepStrictEqual(fetched, ["sounds/a.wav"])
+      }).pipe(Effect.provide(audioLayer(decodingContext())))
+    )
+
+    it.effect("reports an unreadable file as NetworkFailure with the cause", () => {
+      const failure = new Error("ENOENT: no such file")
+      const layer = AudioLive.pipe(
+        Layer.provide(
+          FakeAudioContextLive(decodingContext(), { readFile: () => Promise.reject(failure) })
+        )
+      )
+      return Effect.gen(function* () {
+        const audio = yield* Audio
+        const error = yield* Effect.flip(audio.load("missing.wav"))
+        assert.strictEqual(error.source, "missing.wav")
+        assert.strictEqual(error.reason._tag, "NetworkFailure")
+        assert.strictEqual(error.reason._tag === "NetworkFailure" ? error.reason.cause : 0, failure)
+      }).pipe(Effect.provide(layer))
+    })
+
+    it.live("aborts the read when interrupted", () => {
+      let signal: AbortSignal | undefined
+      const layer = AudioLive.pipe(
+        Layer.provide(
+          FakeAudioContextLive(decodingContext(), {
+            readFile: (_location, given) => {
+              signal = given
+              return new Promise<ArrayBuffer>(() => {})
+            }
+          })
+        )
+      )
+      return Effect.gen(function* () {
+        const audio = yield* Audio
+        const fiber = yield* Effect.forkChild(audio.load("a.wav"))
+        yield* Effect.yieldNow
+        assert.isFalse(signal?.aborted)
+        yield* Fiber.interrupt(fiber)
+        assert.isTrue(signal?.aborted)
+      }).pipe(Effect.provide(layer))
+    })
+
+    it.effect("hands the read an abort signal", () => {
+      const { signals, layer } = setup()
+      return Effect.gen(function* () {
+        const audio = yield* Audio
+        yield* audio.load("a.wav")
+        assert.instanceOf(signals[0], AbortSignal)
+      }).pipe(Effect.provide(layer))
+    })
+  })
+
   it.live("aborts the request when interrupted", () =>
     Effect.gen(function* () {
       let signal: AbortSignal | undefined

@@ -12,7 +12,8 @@
     "erasableSyntaxOnly": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["node"]
+    "types": ["node"],
+    "paths": { "fx-audio": ["./src/index.ts"], "fx-audio/*": ["./src/*.ts"] }
   },
-  "include": ["src", "test", "test-browser", "*.config.ts"]
+  "include": ["src", "test", "test-browser", "examples", "*.config.ts"]
 }

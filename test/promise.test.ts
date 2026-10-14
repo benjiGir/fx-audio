@@ -1,5 +1,8 @@
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
 import { afterEach, assert, describe, it, vi } from "vitest"
 import {
+  AudioContextService,
   LoadError,
   Sound,
   SpriteSegment,
@@ -7,7 +10,7 @@ import {
   UnknownSprite,
   Vector3
 } from "../src/index.ts"
-import { createAudio } from "../src/promise.ts"
+import { createAudio, createAudioAsync } from "../src/promise.ts"
 import { FakeAudioContextLive, makeFakeContext, makeFakeListener } from "../src/testing.ts"
 import { gainAt, voiceGains } from "./helpers/graph.ts"
 
@@ -301,5 +304,28 @@ describe("promise facade groups", () => {
       ctx.gains.map((gain) => gain.disconnects),
       [1, 1]
     )
+  })
+})
+
+describe("promise facade on an asynchronous platform layer", () => {
+  it("resolves once the layer has built, then works like the synchronous facade", async () => {
+    const ctx = makeFakeContext({ decodeAudioData: () => Promise.resolve(buffer) })
+    const delayed = Layer.effect(
+      AudioContextService,
+      Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 5))).pipe(
+        Effect.as(AudioContextService.of({ ctx }))
+      )
+    )
+    const audio = await createAudioAsync(delayed)
+    audio.play(new Sound({ buffer, source: "a.wav" }), { volume: 0.5 })
+    assert.strictEqual(ctx.sources.length, 1)
+    await audio.dispose()
+  })
+
+  it("rejects with the layer's failure, and releases what it built", async () => {
+    const failure = new Error("node-web-audio-api is not installed")
+    const broken = Layer.effect(AudioContextService, Effect.die(failure))
+    const error = await createAudioAsync(broken).catch((e: unknown) => e)
+    assert.strictEqual(error, failure)
   })
 })

@@ -4,11 +4,13 @@ import type * as Layer from "effect/Layer"
 import type * as Scope from "effect/Scope"
 import { describe, expectTypeOf, it } from "vitest"
 import type {
+  AudioContextLike,
   AudioContextService,
   DecodeFailure,
   Group,
   Listener,
   LoadError,
+  MediaElementLike,
   NetworkFailure,
   PlaybackBlocked,
   PlayOptions,
@@ -22,7 +24,7 @@ import type {
 } from "../src/index.ts"
 import { type Audio, AudioBrowserLive, AudioLive } from "../src/index.ts"
 import type { PromiseAudio, PromiseGroup, PromiseVoice } from "../src/promise.ts"
-import { createAudio } from "../src/promise.ts"
+import { createAudio, createAudioAsync } from "../src/promise.ts"
 
 // The compiler checks these, `pnpm typecheck` fails when a public signature moves.
 // `pnpm api` freezes the full surface; these pin the parts users write code against.
@@ -83,6 +85,17 @@ describe("public API types", () => {
     expectTypeOf<typeof Audio>().toHaveProperty("use")
   })
 
+  it("platform service", () => {
+    type Platform = AudioContextService["Service"]
+    expectTypeOf<Platform["ctx"]>().toEqualTypeOf<AudioContextLike>()
+    expectTypeOf<Platform["createMediaElement"]>().toEqualTypeOf<
+      (() => MediaElementLike) | undefined
+    >()
+    expectTypeOf<Platform["readFile"]>().toEqualTypeOf<
+      ((location: string, signal: AbortSignal) => Promise<ArrayBuffer>) | undefined
+    >()
+  })
+
   it("layers", () => {
     expectTypeOf(AudioLive).toExtend<Layer.Layer<Audio, never, AudioContextService>>()
     expectTypeOf(AudioBrowserLive).toExtend<Layer.Layer<Audio>>()
@@ -104,6 +117,9 @@ describe("public API types", () => {
   })
 
   it("promise facade", () => {
+    expectTypeOf(createAudioAsync).toEqualTypeOf<
+      (platform: Layer.Layer<AudioContextService>) => Promise<PromiseAudio>
+    >()
     expectTypeOf(createAudio).returns.toEqualTypeOf<PromiseAudio>()
     expectTypeOf<PromiseAudio>().toExtend<PromiseGroup>()
     expectTypeOf<PromiseAudio["load"]>().toEqualTypeOf<

@@ -11,6 +11,9 @@ import * as Schema from 'effect/Schema';
 // @public
 export const createAudio: (platform?: Layer.Layer<AudioContextService>) => PromiseAudio;
 
+// @public
+export const createAudioAsync: (platform: Layer.Layer<AudioContextService>) => Promise<PromiseAudio>;
+
 // @public (undocumented)
 export interface PromiseAudio extends PromiseGroup {
     // (undocumented)

@@ -10,6 +10,7 @@ import * as Layer from 'effect/Layer';
 // @public
 export const FakeAudioContextLive: (ctx: AudioContextLike, options?: {
     readonly createMediaElement?: () => MediaElementLike;
+    readonly readFile?: (location: string, signal: AbortSignal) => Promise<ArrayBuffer>;
 }) => Layer.Layer<AudioContextService>;
 
 // @public

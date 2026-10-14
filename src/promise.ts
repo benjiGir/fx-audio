@@ -62,12 +62,47 @@ export interface PromiseAudio extends PromiseGroup {
 
 const decodeOptions = Schema.decodeUnknownSync(PlayOptions)
 
-/** Build the facade on a platform layer. Defaults to the browser audio context. */
+type Runtime = ManagedRuntime.ManagedRuntime<Audio, never>
+
+const makeRuntime = (platform: Layer.Layer<AudioContextService>): Runtime =>
+  ManagedRuntime.make(AudioLive.pipe(Layer.provide(platform)))
+
+/**
+ * Build the facade on a platform layer. Defaults to the browser audio context.
+ * The layer has to build synchronously, as the browser's does: for one that does not,
+ * such as `NodeAudioContextLive`, use `createAudioAsync`.
+ */
 export const createAudio = (
   platform: Layer.Layer<AudioContextService> = BrowserAudioContextLive
 ): PromiseAudio => {
-  const runtime = ManagedRuntime.make(AudioLive.pipe(Layer.provide(platform)))
-  const scope = runtime.runSync(Scope.make())
+  const runtime = makeRuntime(platform)
+  return facade(runtime, runtime.runSync(Scope.make()), runtime.runSync(Audio.use(Effect.succeed)))
+}
+
+/**
+ * Build the facade on a platform layer that builds asynchronously, such as `NodeAudioContextLive`
+ * (it loads `node-web-audio-api` on demand). Resolves once the audio context exists.
+ */
+export const createAudioAsync = async (
+  platform: Layer.Layer<AudioContextService>
+): Promise<PromiseAudio> => {
+  const runtime = makeRuntime(platform)
+  try {
+    const [scope, audio] = await runtime.runPromise(
+      Effect.all([Scope.make(), Audio.use(Effect.succeed)])
+    )
+    return facade(runtime, scope, audio)
+  } catch (error) {
+    await runtime.dispose()
+    throw error
+  }
+}
+
+const facade = (
+  runtime: Runtime,
+  scope: Scope.Closeable,
+  audio: Audio["Service"]
+): PromiseAudio => {
   const wrap = (voice: Voice): PromiseVoice => ({
     ended: runtime.runPromise(voice.ended),
     stop: () => runtime.runSync(voice.stop),
@@ -92,7 +127,6 @@ export const createAudio = (
     mute: () => runtime.runSync(group.mute),
     unmute: () => runtime.runSync(group.unmute)
   })
-  const audio = runtime.runSync(Audio.use(Effect.succeed))
   const master = wrapGroup(audio.master)
   const listener = audio.listener satisfies Listener
   const groups = new Map<string, PromiseGroup>()
