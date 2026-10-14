@@ -34,7 +34,7 @@ pnpm build
 pnpm check:package
 ```
 
-Browser tests run on Chromium, Firefox and WebKit. Locally, install them with
+Browser tests run on Chromium, Firefox and WebKit. Sound is rendered with an `OfflineAudioContext`, so no output device is needed. Locally, install them with
 `pnpm exec playwright install`, or restrict the run with `FX_BROWSERS=chromium`
 (and `CHROMIUM_PATH` to use an existing Chromium binary).
 

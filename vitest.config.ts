@@ -7,23 +7,6 @@ type Engine = "chromium" | "firefox" | "webkit"
 const engines = (process.env.FX_BROWSERS ?? "chromium,firefox,webkit").split(",") as Array<Engine>
 const executablePath = process.env.CHROMIUM_PATH
 
-// Each engine takes its own launch options: a flag unknown to one makes it refuse to start.
-const launchOptions = (engine: Engine) => {
-  switch (engine) {
-    case "chromium":
-      return {
-        ...(executablePath === undefined ? {} : { executablePath }),
-        args: ["--autoplay-policy=no-user-gesture-required"]
-      }
-    case "firefox":
-      return {
-        firefoxUserPrefs: { "media.autoplay.default": 0, "media.autoplay.blocking_policy": 0 }
-      }
-    case "webkit":
-      return {}
-  }
-}
-
 export default defineConfig({
   test: {
     coverage: {
@@ -40,7 +23,10 @@ export default defineConfig({
           browser: {
             enabled: true,
             headless: true,
-            provider: playwright({ launchOptions: launchOptions(engine) }),
+            provider: playwright({
+              launchOptions:
+                engine === "chromium" && executablePath !== undefined ? { executablePath } : {}
+            }),
             instances: [{ browser: engine }]
           }
         }
