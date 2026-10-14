@@ -105,6 +105,7 @@ export const createAudio = (
     },
     resume: () => runtime.runPromise(audio.resume),
     load: (url, signal) =>
+      // Stryker disable next-line ConditionalExpression: `{ signal: undefined }` behaves like no option.
       runtime.runPromise(audio.load(url), signal === undefined ? undefined : { signal }),
     group: (name) => {
       let wrapped = groups.get(name)

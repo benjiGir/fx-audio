@@ -142,3 +142,14 @@ describe("SpriteSheet", () => {
     )
   })
 })
+
+describe("model identifiers", () => {
+  it("names every class after the package, for error messages and debugging", () => {
+    assert.strictEqual(Vector3.identifier, "fx-audio/Vector3")
+    assert.strictEqual(SpatialOptions.identifier, "fx-audio/SpatialOptions")
+    assert.strictEqual(Sound.identifier, "fx-audio/Sound")
+    assert.strictEqual(PlayOptions.identifier, "fx-audio/PlayOptions")
+    assert.strictEqual(SpriteSegment.identifier, "fx-audio/SpriteSegment")
+    assert.strictEqual(SpriteSheet.identifier, "fx-audio/SpriteSheet")
+  })
+})

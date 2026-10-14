@@ -252,7 +252,9 @@ describe("streaming failures", () => {
 
   it.effect("reports a network error as NetworkFailure", () =>
     Effect.gen(function* () {
-      assert.instanceOf(reasonOf(yield* failWith(2)), NetworkFailure)
+      const reason = reasonOf(yield* failWith(2))
+      assert.instanceOf(reason, NetworkFailure)
+      assert.deepStrictEqual((reason as NetworkFailure).cause, { code: 2 })
     })
   )
 
@@ -273,6 +275,29 @@ describe("streaming failures", () => {
       assert.instanceOf(reasonOf(yield* failWith(null)), NetworkFailure)
     })
   )
+
+  it.effect("releases the element once, even when the scope closes after a failure", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* Effect.gen(function* () {
+        const fiber = yield* Effect.forkChild(audio.stream(url))
+        yield* Effect.yieldNow
+        elementAt(ctx).emit("error")
+        yield* Fiber.await(fiber)
+      }).pipe(Effect.scoped)
+      const element = elementAt(ctx)
+      assert.strictEqual(element.pauses, 1)
+      assert.strictEqual(element.loads, 1)
+      assert.deepStrictEqual(element.removedAttributes, ["src"])
+      assert.strictEqual(ctx.mediaSources[0]?.disconnects, 1)
+    }).pipe(Effect.provide(layer))
+  })
+
+  it("names its errors", () => {
+    assert.strictEqual(new StreamingUnavailable()._tag, "StreamingUnavailable")
+    assert.strictEqual(new PlaybackBlocked({ source: url, cause: 1 })._tag, "PlaybackBlocked")
+  })
 
   it.effect("releases the element when the stream is interrupted while loading", () => {
     const { ctx, layer } = setup()

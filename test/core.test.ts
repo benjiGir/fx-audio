@@ -95,10 +95,12 @@ describe("Audio.load", () => {
 
   it.effect("reports a failed request as NetworkFailure", () =>
     Effect.gen(function* () {
-      vi.stubGlobal("fetch", () => Promise.reject(new TypeError("offline")))
+      const offline = new TypeError("offline")
+      vi.stubGlobal("fetch", () => Promise.reject(offline))
       const audio = yield* Audio
       const error = yield* Effect.flip(audio.load("https://x/a.wav"))
       assert.strictEqual(error.reason._tag, "NetworkFailure")
+      assert.strictEqual(error.reason._tag === "NetworkFailure" ? error.reason.cause : 0, offline)
     }).pipe(Effect.provide(layer()))
   )
 
@@ -115,11 +117,13 @@ describe("Audio.load", () => {
   it.effect("reports a body that cannot be read as NetworkFailure", () =>
     Effect.gen(function* () {
       const response = new Response(bytes)
-      vi.spyOn(response, "arrayBuffer").mockRejectedValue(new TypeError("connection reset"))
+      const reset = new TypeError("connection reset")
+      vi.spyOn(response, "arrayBuffer").mockRejectedValue(reset)
       vi.stubGlobal("fetch", () => Promise.resolve(response))
       const audio = yield* Audio
       const error = yield* Effect.flip(audio.load("https://x/a.wav"))
       assert.strictEqual(error.reason._tag, "NetworkFailure")
+      assert.strictEqual(error.reason._tag === "NetworkFailure" ? error.reason.cause : 0, reset)
     }).pipe(Effect.provide(layer()))
   )
 
