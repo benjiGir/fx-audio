@@ -30,7 +30,10 @@ export default defineConfig({
       "/": [
         {
           text: "Introduction",
-          items: [{ text: "Getting started", link: "/guide/getting-started" }]
+          items: [
+            { text: "Getting started", link: "/guide/getting-started" },
+            { text: "Migrating from Howler", link: "/guide/migrating-from-howler" }
+          ]
         },
         {
           text: "Guides",
