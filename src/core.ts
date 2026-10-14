@@ -158,6 +158,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
   Effect.gen(function* () {
     const { ctx, createMediaElement } = yield* AudioContextService
 
+    // Stryker disable next-line StringLiteral: the span name is only a label.
     const decode = Effect.fn("Audio.decode")(function* (bytes: ArrayBuffer, source: string) {
       const buffer = yield* Effect.tryPromise({
         try: () => ctx.decodeAudioData(bytes),
@@ -173,6 +174,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       return new Sound({ buffer, source })
     })
 
+    // Stryker disable next-line StringLiteral: the span name is only a label.
     const load = Effect.fn("Audio.load")(function* (url: string) {
       const response = yield* Effect.tryPromise({
         try: (signal) => fetch(url, { signal }),
@@ -511,6 +513,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
     const layerScope = yield* Effect.scope
     const groups = new Map<string, Group>()
     const creating = yield* Semaphore.make(1)
+    // Stryker disable next-line StringLiteral: the span name is only a label.
     const group = Effect.fn("Audio.group")(function* (name: string) {
       return yield* Effect.gen(function* () {
         const existing = groups.get(name)

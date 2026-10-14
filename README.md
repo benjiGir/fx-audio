@@ -146,6 +146,7 @@ pnpm lint
 pnpm typecheck
 pnpm coverage     # unit tests, coverage thresholds: 95%
 pnpm test:browser # real browsers through Playwright (all three engines by default)
+pnpm mutation     # mutation testing with Stryker, break threshold: 80% (about 12 minutes)
 pnpm build
 pnpm check:package
 ```
@@ -153,6 +154,11 @@ pnpm check:package
 Browser tests run on Chromium, Firefox and WebKit. Sound is rendered with an `OfflineAudioContext`, so no output device is needed. Locally, install them with
 `pnpm exec playwright install`, or restrict the run with `FX_BROWSERS=chromium`
 (and `CHROMIUM_PATH` to use an existing Chromium binary).
+
+Mutation testing changes the source on purpose (flips a condition, drops a call, empties a string)
+and checks that a unit test fails each time. A mutant that survives is behaviour no test pins down.
+The HTML report is written to `reports/mutation/index.html`. Vitest is pinned to 4.1.x because
+Stryker's Vitest runner does not support Vitest 5 yet.
 
 ## License
 

@@ -99,6 +99,8 @@ describe("resuming on a user gesture", () => {
         added.mock.calls.map(([type]) => type),
         ["pointerdown", "keydown", "touchend"]
       )
+      // Capturing, so a page that stops propagation of its own events cannot hide the gesture.
+      for (const call of added.mock.calls) assert.deepStrictEqual(call[2], { capture: true })
       yield* Effect.promise(() => gesture("keydown"))
       assert.strictEqual(ctx.resume.mock.calls.length, 1)
       yield* Effect.promise(() => gesture())
@@ -135,6 +137,7 @@ describe("resuming on a user gesture", () => {
         removed.mock.calls.map(([type]) => type),
         ["pointerdown", "keydown", "touchend"]
       )
+      for (const call of removed.mock.calls) assert.deepStrictEqual(call[2], { capture: true })
       yield* Effect.promise(() => gesture())
       assert.strictEqual(ctx.resume.mock.calls.length, 0)
     })

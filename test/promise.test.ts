@@ -95,11 +95,12 @@ describe("promise facade", () => {
     const { listener, audio } = setup()
     audio.listener.setPosition(new Vector3({ x: 7, y: 0, z: 0 }))
     audio.listener.setOrientation(
-      new Vector3({ x: 0, y: 0, z: 1 }),
-      new Vector3({ x: 0, y: 1, z: 0 })
+      new Vector3({ x: 0, y: 0, z: -2 }),
+      new Vector3({ x: 0, y: 3, z: 0 })
     )
     assert.strictEqual(listener.positionX.value, 7)
-    assert.strictEqual(listener.forwardZ.value, 1)
+    assert.strictEqual(listener.forwardZ.value, -2)
+    assert.strictEqual(listener.upY.value, 3)
     await audio.dispose()
   })
 
@@ -247,10 +248,11 @@ describe("promise facade groups", () => {
     assert.deepStrictEqual(ctx.gains[1]?.gain.calls.at(-1), { kind: "set", value: 0.5, time: 2 })
     group.fadeTo(0, 1.5)
     assert.deepStrictEqual(ctx.gains[1]?.gain.calls.at(-1), { kind: "ramp", value: 0, time: 3.5 })
+    group.setVolume(0.6)
     group.mute()
     assert.strictEqual(ctx.gains[1]?.gain.calls.at(-1)?.value, 0)
     group.unmute()
-    assert.strictEqual(ctx.gains[1]?.gain.calls.at(-1)?.value, 0)
+    assert.strictEqual(ctx.gains[1]?.gain.calls.at(-1)?.value, 0.6)
     group.setVolume(0.8)
     assert.strictEqual(ctx.gains[1]?.gain.calls.at(-1)?.value, 0.8)
     await audio.dispose()
