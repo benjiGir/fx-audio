@@ -104,21 +104,16 @@ describe("play() cost on the calling thread", () => {
     return Effect.gen(function* () {
       const audio = yield* Audio
       const sound = yield* audio.decode(makeWav(0.05), "tone.wav")
-      const runs = 200
-      const samples: Array<number> = []
+      const runs = 1000
+      // Timed as one batch: Firefox and WebKit coarsen performance.now(), which hides a single call.
+      const start = performance.now()
       for (let i = 0; i < runs; i++) {
-        const start = performance.now()
         yield* audio.play(sound, { volume: 0.01 }).pipe(Effect.scoped)
-        samples.push(performance.now() - start)
       }
-      samples.sort((a, b) => a - b)
-      const median = samples[Math.floor(runs / 2)] ?? Number.NaN
-      const p95 = samples[Math.floor(runs * 0.95)] ?? Number.NaN
-      console.log(
-        `play() cost over ${runs} runs: median ${median.toFixed(3)} ms, p95 ${p95.toFixed(3)} ms`
-      )
+      const mean = (performance.now() - start) / runs
+      console.log(`play() mean cost over ${runs} runs: ${mean.toFixed(4)} ms`)
       // Generous bound: it only has to catch an order-of-magnitude regression.
-      assert.isBelow(median, 5)
+      assert.isBelow(mean, 1)
     }).pipe(Effect.provide(AudioLive.pipe(Layer.provide(layer))))
   })
 })
