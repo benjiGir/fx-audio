@@ -4,7 +4,8 @@ import type {
   AudioNodeLike,
   AudioParamLike,
   GainNodeLike,
-  SourceNodeLike
+  SourceNodeLike,
+  StereoPannerNodeLike
 } from "./context.ts"
 import { AudioContextService } from "./context.ts"
 
@@ -42,10 +43,18 @@ export interface FakeGain extends GainNodeLike {
   readonly connections: ReadonlyArray<AudioNodeLike>
 }
 
+export interface FakePanner extends StereoPannerNodeLike {
+  readonly pan: FakeParam
+  readonly disconnects: number
+  /** Every node this panner was connected to, in order. */
+  readonly connections: ReadonlyArray<AudioNodeLike>
+}
+
 /** Pure-JS audio context double: records nodes and calls, does no audio work. */
 export interface FakeContext extends AudioContextLike {
   readonly sources: ReadonlyArray<FakeSource>
   readonly gains: ReadonlyArray<FakeGain>
+  readonly panners: ReadonlyArray<FakePanner>
   currentTime: number
 }
 
@@ -74,10 +83,12 @@ const makeParam = (): FakeParam => {
 export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext => {
   const sources: Array<FakeSource> = []
   const gains: Array<FakeGain> = []
+  const panners: Array<FakePanner> = []
   const destination: AudioNodeLike = { connect: () => undefined, disconnect() {} }
   return {
     sources,
     gains,
+    panners,
     currentTime: 0,
     state: "running",
     destination,
@@ -131,6 +142,22 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
       }
       gains.push(gain)
       return gain
+    },
+    createStereoPanner() {
+      const connections: Array<AudioNodeLike> = []
+      const panner: FakePanner & { disconnects: number } = {
+        pan: makeParam(),
+        disconnects: 0,
+        connections,
+        connect(destination) {
+          connections.push(destination)
+        },
+        disconnect() {
+          panner.disconnects++
+        }
+      }
+      panners.push(panner)
+      return panner
     },
     decodeAudioData:
       options.decodeAudioData ?? (() => Promise.reject(new Error("fake context cannot decode"))),

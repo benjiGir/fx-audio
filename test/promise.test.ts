@@ -63,6 +63,15 @@ describe("promise facade", () => {
     await audio.dispose()
   })
 
+  it("pans a voice, at start and afterwards", async () => {
+    const { ctx, audio } = setup()
+    const voice = audio.play(new Sound({ buffer, source: "a.wav" }), { pan: -1 })
+    voice.setPan(0.5)
+    assert.strictEqual(ctx.panners[0]?.pan.value, 0.5)
+    assert.throws(() => voice.setPan(2))
+    await audio.dispose()
+  })
+
   it("throws on invalid play options before touching the engine", async () => {
     const { ctx, audio } = setup()
     assert.throws(() =>

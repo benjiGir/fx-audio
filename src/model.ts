@@ -8,6 +8,9 @@ const isAudioBufferLike = (u: unknown): u is AudioBuffer =>
 /** A gain: zero is silence, one is unchanged, above one amplifies. */
 export const Volume = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
 
+/** Stereo position: -1 is all left, 0 is centred, 1 is all right. */
+export const Pan = Schema.Finite.check(Schema.isBetween({ minimum: -1, maximum: 1 }))
+
 /** A decoded sound, ready to be played any number of times. */
 export class Sound extends Schema.Class<Sound>("fx-audio/Sound")({
   buffer: Schema.declare(isAudioBufferLike),
@@ -17,6 +20,7 @@ export class Sound extends Schema.Class<Sound>("fx-audio/Sound")({
 /** Options of one `play` call. Decode untrusted input with `Schema.decodeUnknownSync(PlayOptions)`. */
 export class PlayOptions extends Schema.Class<PlayOptions>("fx-audio/PlayOptions")({
   volume: Schema.optionalKey(Volume),
+  pan: Schema.optionalKey(Pan),
   rate: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThan(0))),
   loop: Schema.optionalKey(Schema.Boolean)
 }) {}

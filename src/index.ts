@@ -3,7 +3,8 @@ export type {
   AudioNodeLike,
   AudioParamLike,
   GainNodeLike,
-  SourceNodeLike
+  SourceNodeLike,
+  StereoPannerNodeLike
 } from "./context.ts"
 export { AudioContextService, BrowserAudioContextLive } from "./context.ts"
 export type { Group, Voice } from "./core.ts"

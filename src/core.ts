@@ -7,7 +7,12 @@ import * as Ref from "effect/Ref"
 import * as Schema from "effect/Schema"
 import * as Scope from "effect/Scope"
 import * as Semaphore from "effect/Semaphore"
-import type { AudioNodeLike } from "./context.ts"
+import type {
+  AudioNodeLike,
+  GainNodeLike,
+  SourceNodeLike,
+  StereoPannerNodeLike
+} from "./context.ts"
 import { AudioContextService, BrowserAudioContextLive } from "./context.ts"
 import {
   DecodeFailure,
@@ -16,7 +21,14 @@ import {
   UnknownSprite,
   UnsupportedFormat
 } from "./errors.ts"
-import { type PlayOptions, Sound, type SpriteSegment, type SpriteSheet, Volume } from "./model.ts"
+import {
+  Pan,
+  type PlayOptions,
+  Sound,
+  type SpriteSegment,
+  type SpriteSheet,
+  Volume
+} from "./model.ts"
 
 export interface Voice {
   /** Completes when playback ends naturally, the voice is stopped or its scope closes. */
@@ -24,6 +36,11 @@ export interface Voice {
   readonly stop: Effect.Effect<void>
   /** Linear fade of this voice's gain, scheduled on the audio thread. */
   readonly fadeTo: (volume: number, over: Duration.Input) => Effect.Effect<void>
+  /**
+   * Move this voice between the left (-1) and right (1) speaker. Dies on a value
+   * outside that range. A voice started without `pan` gets its panner on the first call.
+   */
+  readonly setPan: (pan: number) => Effect.Effect<void>
 }
 
 /**
@@ -48,6 +65,7 @@ export interface Group {
 }
 
 const decodeVolume = Schema.decodeUnknownSync(Volume)
+const decodePan = Schema.decodeUnknownSync(Pan)
 
 export class Audio extends Context.Service<
   Audio,
@@ -117,6 +135,15 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       return yield* decode(bytes, url)
     })
 
+    // source -> [panner] -> gain: the panner is only built for voices that ask for one.
+    const connectPanner = (source: SourceNodeLike, gain: GainNodeLike, pan: number) => {
+      const panner = ctx.createStereoPanner()
+      panner.pan.value = pan
+      source.connect(panner)
+      panner.connect(gain)
+      return panner
+    }
+
     const startVoice = Effect.fnUntraced(function* (
       sound: Sound,
       options: PlayOptions,
@@ -124,15 +151,20 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       output: AudioNodeLike
     ): Effect.fn.Return<Voice, never, Scope.Scope> {
       const ended = yield* Deferred.make<void>()
-      const { source, gain } = yield* Effect.acquireRelease(
+      const { source, gain, route } = yield* Effect.acquireRelease(
         Effect.sync(() => {
           const source = ctx.createBufferSource()
           const gain = ctx.createGain()
+          const route: { panner: StereoPannerNodeLike | undefined } = { panner: undefined }
           source.buffer = sound.buffer
           source.loop = options.loop ?? segment?.loop ?? false
           if (options.rate !== undefined) source.playbackRate.value = options.rate
           gain.gain.value = options.volume ?? 1
-          source.connect(gain)
+          if (options.pan === undefined) {
+            source.connect(gain)
+          } else {
+            route.panner = connectPanner(source, gain, options.pan)
+          }
           gain.connect(output)
           source.onended = () => Deferred.doneUnsafe(ended, Effect.void)
           if (segment === undefined) {
@@ -150,9 +182,9 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
               source.start(0, start, duration)
             }
           }
-          return { source, gain }
+          return { source, gain, route }
         }),
-        ({ source, gain }) =>
+        ({ source, gain, route }) =>
           Effect.suspend(() => {
             source.onended = null
             try {
@@ -161,6 +193,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
               // already stopped
             }
             source.disconnect()
+            route.panner?.disconnect()
             gain.disconnect()
             return Deferred.succeed(ended, undefined)
           })
@@ -175,6 +208,16 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
             const now = ctx.currentTime
             gain.gain.setValueAtTime(gain.gain.value, now)
             gain.gain.linearRampToValueAtTime(volume, now + Duration.toSeconds(over))
+          }),
+        setPan: (requested) =>
+          Effect.sync(() => {
+            const pan = decodePan(requested)
+            if (route.panner === undefined) {
+              source.disconnect()
+              route.panner = connectPanner(source, gain, pan)
+            } else {
+              route.panner.pan.value = pan
+            }
           })
       }
     })

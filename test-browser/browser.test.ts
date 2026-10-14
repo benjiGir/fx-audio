@@ -224,6 +224,39 @@ describe("groups on a real engine (offline render)", () => {
   )
 })
 
+describe("stereo pan on a real engine (offline render)", () => {
+  const render = (pan: number, later?: number) => {
+    const { layer, render } = makeOfflineContext(0.3, 44100, 2)
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const sound = yield* audio.decode(makeWav(0.2), "tone.wav")
+      const voice = yield* audio.play(sound, { pan, volume: 0.5 })
+      if (later !== undefined) yield* voice.setPan(later)
+      return yield* Effect.promise(render)
+    }).pipe(
+      Effect.scoped,
+      Effect.timeout("10 seconds"),
+      Effect.provide(AudioLive.pipe(Layer.provide(layer)))
+    )
+  }
+
+  it.live("a hard-left voice is silent on the right channel", () =>
+    Effect.gen(function* () {
+      const rendered = yield* render(-1)
+      assert.isAbove(peak(rendered, 0), 0.1)
+      assert.isBelow(peak(rendered, 1), 0.001)
+    })
+  )
+
+  it.live("setPan moves the voice to the other side", () =>
+    Effect.gen(function* () {
+      const rendered = yield* render(-1, 1)
+      assert.isAbove(peak(rendered, 1), 0.1)
+      assert.isBelow(peak(rendered, 0), 0.001)
+    })
+  )
+})
+
 describe("play() cost on the calling thread", () => {
   it.live("is far below one audio render quantum", () => {
     const { layer } = makeOfflineContext()
