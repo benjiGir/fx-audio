@@ -112,6 +112,7 @@ export class AudioContextService extends Context.Service<
     /** Builds the element a stream plays through. Left out where there is none, as under Node. */
     readonly createMediaElement?: () => MediaElementLike
   }
+  // Stryker disable next-line StringLiteral: the service key is only an identifier.
 >()("fx-audio/AudioContext") {}
 
 const gestures = ["pointerdown", "keydown", "touchend"] as const

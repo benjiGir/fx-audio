@@ -104,8 +104,8 @@ export const createAudio = (
       setOrientation: (forward, up) => runtime.runSync(listener.setOrientation(forward, up))
     },
     resume: () => runtime.runPromise(audio.resume),
-    // Stryker disable next-line ConditionalExpression: `{ signal: undefined }` behaves like no option.
     load: (url, signal) =>
+      // Stryker disable next-line ConditionalExpression: `{ signal: undefined }` behaves like no option.
       runtime.runPromise(audio.load(url), signal === undefined ? undefined : { signal }),
     group: (name) => {
       let wrapped = groups.get(name)

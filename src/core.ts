@@ -150,6 +150,7 @@ export class Audio extends Context.Service<
      */
     readonly resume: Effect.Effect<void>
   }
+  // Stryker disable next-line StringLiteral: the service key is only an identifier.
 >()("fx-audio/Audio") {}
 
 /** The service, still needing an `AudioContextService` for the platform. */
