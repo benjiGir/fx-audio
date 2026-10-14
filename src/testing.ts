@@ -1,3 +1,8 @@
+/**
+ * An audio context double that records every node, param and scheduled change, for unit tests.
+ * @module fx-audio/testing
+ */
+
 import * as Layer from "effect/Layer"
 import type {
   AudioContextLike,
@@ -181,6 +186,16 @@ export const makeLegacyListener = (): FakeLegacyListener => {
   }
 }
 
+/**
+ * Build an audio context double that records the nodes, params and calls the core makes.
+ * Give it to `FakeAudioContextLive`, then check what the code under test did.
+ *
+ * @example
+ * ```ts
+ * const ctx = makeFakeContext({ decodeAudioData: () => Promise.resolve(buffer) })
+ * const layer = AudioLive.pipe(Layer.provide(FakeAudioContextLive(ctx)))
+ * ```
+ */
 export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext => {
   const sources: Array<FakeSource> = []
   const gains: Array<FakeGain> = []

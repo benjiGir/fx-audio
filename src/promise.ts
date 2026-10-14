@@ -1,3 +1,9 @@
+/**
+ * Promise facade for code that does not use Effect: `createAudio` for the browser,
+ * `createAudioAsync` for layers that build asynchronously, such as the Node one.
+ * @module fx-audio/promise
+ */
+
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
@@ -71,6 +77,15 @@ const makeRuntime = (platform: Layer.Layer<AudioContextService>): Runtime =>
  * Build the facade on a platform layer. Defaults to the browser audio context.
  * The layer has to build synchronously, as the browser's does: for one that does not,
  * such as `NodeAudioContextLive`, use `createAudioAsync`.
+ *
+ * @example
+ * ```ts
+ * const audio = createAudio()
+ * const sound = await audio.load("/sounds/hit.mp3")
+ * const voice = audio.play(sound, { volume: 0.8 })
+ * await voice.ended
+ * await audio.dispose()
+ * ```
  */
 export const createAudio = (
   platform: Layer.Layer<AudioContextService> = BrowserAudioContextLive
@@ -82,6 +97,12 @@ export const createAudio = (
 /**
  * Build the facade on a platform layer that builds asynchronously, such as `NodeAudioContextLive`
  * (it loads `node-web-audio-api` on demand). Resolves once the audio context exists.
+ *
+ * @example
+ * ```ts
+ * const audio = await createAudioAsync(NodeAudioContextLive())
+ * audio.play(await audio.load("./sounds/hit.wav"))
+ * ```
  */
 export const createAudioAsync = async (
   platform: Layer.Layer<AudioContextService>

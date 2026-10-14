@@ -161,7 +161,7 @@ export interface FakeSpatialPanner extends PannerNodeLike {
     readonly positionZ: FakeParam;
 }
 
-// @public (undocumented)
+// @public
 export const makeFakeContext: (options?: FakeContextOptions) => FakeContext;
 
 // @public (undocumented)

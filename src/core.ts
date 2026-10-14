@@ -116,6 +116,21 @@ const setVector = (
   params[2].value = z
 }
 
+/**
+ * The audio engine: load and decode sounds, play them (whole, by sprite or streamed), and reach
+ * the master, the named groups and the listener. Provide it with `AudioBrowserLive`, or with
+ * `AudioLive` on top of a platform layer such as `NodeAudioContextLive`.
+ *
+ * @example
+ * ```ts
+ * const program = Effect.gen(function* () {
+ *   const audio = yield* Audio
+ *   const sound = yield* audio.load("/sounds/hit.mp3")
+ *   const voice = yield* audio.play(sound, { volume: 0.8 })
+ *   yield* voice.ended
+ * }).pipe(Effect.scoped, Effect.provide(AudioBrowserLive))
+ * ```
+ */
 export class Audio extends Context.Service<
   Audio,
   {

@@ -49,7 +49,14 @@ export class Sound extends Schema.Class<Sound>("fx-audio/Sound")({
   source: Schema.String
 }) {}
 
-/** Options of one `play` call. Decode untrusted input with `Schema.decodeUnknownSync(PlayOptions)`. */
+/**
+ * Options of one `play` call. Decode untrusted input with `Schema.decodeUnknownSync(PlayOptions)`.
+ *
+ * @example
+ * ```ts
+ * yield* audio.play(sound, { volume: 0.5, pan: -1, rate: 1.2, loop: true })
+ * ```
+ */
 export class PlayOptions extends Schema.Class<PlayOptions>("fx-audio/PlayOptions")({
   volume: Schema.optionalKey(Volume),
   pan: Schema.optionalKey(Pan),
@@ -65,7 +72,21 @@ export class SpriteSegment extends Schema.Class<SpriteSegment>("fx-audio/SpriteS
   loop: Schema.optionalKey(Schema.Boolean)
 }) {}
 
-/** One decoded sound cut into named segments, played with `Audio.playSprite`. */
+/**
+ * One decoded sound cut into named segments, played with `Audio.playSprite`.
+ *
+ * @example
+ * ```ts
+ * const sheet = new SpriteSheet({
+ *   sound,
+ *   segments: {
+ *     hit: new SpriteSegment({ start: 0, duration: 400 }),
+ *     engine: new SpriteSegment({ start: 500, duration: 2000, loop: true })
+ *   }
+ * })
+ * const voice = yield* audio.playSprite(sheet, "hit")
+ * ```
+ */
 export class SpriteSheet extends Schema.Class<SpriteSheet>("fx-audio/SpriteSheet")({
   sound: Sound,
   segments: Schema.Record(Schema.String, SpriteSegment)

@@ -12,7 +12,7 @@ import * as Schema from 'effect/Schema';
 import * as Scope from 'effect/Scope';
 import { YieldableError } from 'effect/Cause';
 
-// @public (undocumented)
+// @public
 class Audio_2 extends Audio_base {}
 export { Audio_2 as Audio }
 
