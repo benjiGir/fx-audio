@@ -101,6 +101,18 @@ Attributes: `orientation`, `panningModel` (`"equalpower"` or `"HRTF"`), `distanc
 A non-finite coordinate is a defect for the setters. `pan` and `spatial` can be combined: the stereo pan is applied first.
 The panner is only built for voices that use one.
 
+## Autoplay policy
+
+Browsers keep a new `AudioContext` suspended until the page has seen a user gesture. The browser layer resumes it on the first click, key press or touch, then stops listening;
+a gesture the browser refuses leaves the listeners in place for the next one. To be sure sound starts at once, call `audio.resume` from your own handler
+(a `Promise<void>` method on the promise facade). It does nothing on a running context.
+
+```ts
+button.addEventListener("click", () => audio.resume())
+```
+
+A voice started before the first gesture waits on the suspended context and starts playing when it runs.
+
 ## Codecs
 
 The browser decodes whatever the browser supports. Under Node, `node-web-audio-api` decodes WAV, MP3, Ogg Vorbis, FLAC and AAC in M4A (when the `moov` atom comes first),

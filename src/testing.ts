@@ -91,6 +91,8 @@ export interface FakeContext extends AudioContextLike {
   readonly sources: ReadonlyArray<FakeSource>
   readonly gains: ReadonlyArray<FakeGain>
   readonly panners: ReadonlyArray<FakePanner>
+  /** Number of `resume` calls. */
+  readonly resumes: number
   /** The 3D panners, in creation order. */
   readonly spatialPanners: ReadonlyArray<FakeSpatialPanner>
   readonly listener: AudioListenerLike
@@ -100,6 +102,8 @@ export interface FakeContext extends AudioContextLike {
 export interface FakeContextOptions {
   /** Replace the decoder. By default every decode rejects. */
   readonly decodeAudioData?: (data: ArrayBuffer) => Promise<AudioBuffer>
+  /** Replace what `resume` returns, by default a resolved promise. */
+  readonly resume?: () => Promise<void>
   /** Replace the listener, by default a `makeFakeListener()`. */
   readonly listener?: AudioListenerLike
 }
@@ -151,12 +155,16 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
   const gains: Array<FakeGain> = []
   const panners: Array<FakePanner> = []
   const spatialPanners: Array<FakeSpatialPanner> = []
+  let resumes = 0
   const destination: AudioNodeLike = { connect: () => undefined, disconnect() {} }
   return {
     sources,
     gains,
     panners,
     spatialPanners,
+    get resumes() {
+      return resumes
+    },
     listener: options.listener ?? makeFakeListener(),
     currentTime: 0,
     state: "running",
@@ -260,7 +268,10 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
     },
     decodeAudioData:
       options.decodeAudioData ?? (() => Promise.reject(new Error("fake context cannot decode"))),
-    resume: () => Promise.resolve(),
+    resume: () => {
+      resumes++
+      return options.resume?.() ?? Promise.resolve()
+    },
     close: () => Promise.resolve()
   }
 }

@@ -124,6 +124,12 @@ export class Audio extends Context.Service<
     group(name: string): Effect.Effect<Group>
     /** The listener of the audio context, which every spatial voice is heard from. */
     readonly listener: Listener
+    /**
+     * Resume a context the browser kept suspended. Call it from a user gesture to be sure
+     * sound starts at once; the browser layer also does it on the first click, key press or touch.
+     * Does nothing on a running context.
+     */
+    readonly resume: Effect.Effect<void>
   }
 >()("fx-audio/Audio") {}
 
@@ -437,7 +443,8 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       playSprite: master.playSprite,
       master,
       group,
-      listener: listenerService
+      listener: listenerService,
+      resume: Effect.promise(() => ctx.resume())
     })
   })
 )

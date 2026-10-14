@@ -3,6 +3,7 @@ import type * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import type * as Scope from "effect/Scope"
+import { userEvent } from "vitest/browser"
 import {
   Audio,
   AudioContextService,
@@ -18,6 +19,18 @@ import { makeWav } from "../test/helpers/wav.ts"
 import { makeOfflineContext, peak } from "./offline.ts"
 
 const realAudio = AudioLive.pipe(Layer.provideMerge(BrowserAudioContextLive))
+
+describe("resuming on a real user gesture", () => {
+  it.live("a context the browser starts suspended runs after the first click", () =>
+    Effect.gen(function* () {
+      const { ctx } = yield* AudioContextService
+      const before = ctx.state
+      yield* Effect.promise(() => userEvent.click(document.body))
+      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 300)))
+      assert.strictEqual(`${before} -> ${ctx.state}`, "suspended -> running")
+    }).pipe(Effect.provide(BrowserAudioContextLive), Effect.scoped)
+  )
+})
 
 describe("the browser's native AudioContext", () => {
   it.live("decodes a WAV with the native decoder", () =>
