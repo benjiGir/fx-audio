@@ -237,6 +237,8 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
           listeners[type].delete(listener)
         },
         emit(type) {
+          // Listeners remove themselves while the event is dispatched, so iterate a copy.
+          // oxlint-disable-next-line unicorn/no-useless-spread
           for (const listener of [...listeners[type]]) listener()
         },
         listenerCount: (type) => listeners[type].size

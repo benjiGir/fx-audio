@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "oxc", "unicorn", "vitest"],
+  "categories": { "correctness": "error" },
+  "env": { "builtin": true },
+  "ignorePatterns": [
+    "dist",
+    "coverage",
+    "reports",
+    ".stryker-tmp",
+    "bench/.out",
+    "docs/.vitepress/cache",
+    "docs/.vitepress/dist"
+  ]
+}
