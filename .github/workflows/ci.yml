@@ -21,6 +21,7 @@ jobs:
       - run: pnpm coverage
       - run: pnpm build
       - run: pnpm check:package
+      - run: node scripts/api-report.mjs
 
   browser:
     runs-on: ubuntu-latest
