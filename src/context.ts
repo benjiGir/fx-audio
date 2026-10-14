@@ -111,6 +111,12 @@ export class AudioContextService extends Context.Service<
     readonly ctx: AudioContextLike
     /** Builds the element a stream plays through. Left out where there is none, as under Node. */
     readonly createMediaElement?: () => MediaElementLike
+    /**
+     * Reads the bytes of a local file, given a path or a `file:` URL. Left out in the browser,
+     * where every source goes through `fetch`. When present, `Audio.load` uses it for any source
+     * that is a path or a `file:` URL.
+     */
+    readonly readFile?: (location: string, signal: AbortSignal) => Promise<ArrayBuffer>
   }
   // Stryker disable next-line StringLiteral: the service key is only an identifier.
 >()("fx-audio/AudioContext") {}

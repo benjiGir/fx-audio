@@ -16,8 +16,8 @@ It aims to replace Howler.js with a smaller, faster, fully typed and thoroughly 
 | Import | Content |
 | --- | --- |
 | `fx-audio` | Effect core (`Audio` service with `load`, `decode`, `play`, `playSprite`, `master`, `group`; `Sound`, `PlayOptions`, `SpriteSheet`, `LoadError`) and the browser layers |
-| `fx-audio/node` | `NodeAudioContextLive`, on top of `node-web-audio-api` |
-| `fx-audio/promise` | Promise facade for code that does not use Effect |
+| `fx-audio/node` | `NodeAudioContextLive`, on top of `node-web-audio-api`: loads sounds from disk |
+| `fx-audio/promise` | Promise facade for code that does not use Effect (`createAudio`, and `createAudioAsync` for Node) |
 | `fx-audio/testing` | `makeFakeContext` and `FakeAudioContextLive`, an audio context double for tests |
 
 Import Effect modules by subpath (`effect/Effect`), never from the `effect` barrel, to keep bundles small.
@@ -131,6 +131,39 @@ button.addEventListener("click", () => audio.resume())
 ```
 
 A voice started before the first gesture waits on the suspended context and starts playing when it runs.
+
+## Node
+
+`NodeAudioContextLive` plays through `node-web-audio-api`, or through no device at all with `{ silent: true }`
+(CI, servers without a sound card). Under Node, `load` reads a path (relative to the working directory)
+or a `file:` URL from disk, and still fetches `http:` and `https:` URLs:
+
+```ts
+import { Audio, AudioLive } from "fx-audio"
+import { NodeAudioContextLive } from "fx-audio/node"
+
+const layer = AudioLive.pipe(Layer.provide(NodeAudioContextLive()))
+
+const sound = yield* audio.load("./sounds/hit.wav")
+const same = yield* audio.load(new URL("./hit.wav", import.meta.url).href)
+```
+
+A file that cannot be read fails with `LoadError` whose `reason` is `NetworkFailure`, and `cause` holds the
+system error (`ENOENT`, `EACCES`...). A file that is not valid audio fails with `DecodeFailure`, as anywhere.
+Streaming needs a media element, so `stream` fails with `StreamingUnavailable` under Node: load the file instead.
+
+The Node layer builds its context on demand, so the promise facade is created asynchronously there:
+
+```ts
+import { createAudioAsync } from "fx-audio/promise"
+
+const audio = await createAudioAsync(NodeAudioContextLive())
+audio.play(await audio.load("./sounds/hit.wav"))
+```
+
+Two runnable examples, checked by `tsc` in CI: [`examples/node-play.ts`](examples/node-play.ts) plays a file,
+[`examples/node-server.ts`](examples/node-server.ts) is an HTTP server that plays sounds from a folder.
+Build first (`pnpm build`), then `node examples/node-play.ts path/to/sound.wav`.
 
 ## Codecs
 

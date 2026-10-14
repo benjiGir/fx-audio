@@ -97,6 +97,12 @@ export interface Group {
   readonly unmute: Effect.Effect<void>
 }
 
+// A scheme of two letters or more makes a URL; a single letter is a Windows drive (`C:`).
+const hasScheme = /^[a-z][a-z0-9+.-]+:/i
+
+/** A `file:` URL or a plain path, as opposed to `http:`, `data:`, `blob:` and the like. */
+const isLocalFile = (source: string) => source.startsWith("file:") || !hasScheme.test(source)
+
 const decodeVolume = Schema.decodeUnknownSync(Volume)
 const decodePan = Schema.decodeUnknownSync(Pan)
 const decodeVector = Schema.decodeUnknownSync(Vector3)
@@ -115,7 +121,10 @@ export class Audio extends Context.Service<
   {
     /** Decode already-fetched bytes. Decoder failures become typed errors. */
     decode(bytes: ArrayBuffer, source: string): Effect.Effect<Sound, LoadError>
-    /** Fetch then decode. Interrupting the effect aborts the request. */
+    /**
+     * Fetch then decode. Interrupting the effect aborts the request. Where the platform can read
+     * files (under Node), a path or a `file:` URL is read from disk instead of fetched.
+     */
     load(url: string): Effect.Effect<Sound, LoadError>
     /** Start a voice on the master group. Its audio nodes are released when the surrounding `Scope` closes. */
     play(sound: Sound, options?: PlayOptions): Effect.Effect<Voice, never, Scope.Scope>
@@ -157,7 +166,7 @@ export class Audio extends Context.Service<
 export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.effect(
   Audio,
   Effect.gen(function* () {
-    const { ctx, createMediaElement } = yield* AudioContextService
+    const { ctx, createMediaElement, readFile } = yield* AudioContextService
 
     // Stryker disable next-line StringLiteral: the span name is only a label.
     const decode = Effect.fn("Audio.decode")(function* (bytes: ArrayBuffer, source: string) {
@@ -175,11 +184,13 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       return new Sound({ buffer, source })
     })
 
-    // Stryker disable next-line StringLiteral: the span name is only a label.
-    const load = Effect.fn("Audio.load")(function* (url: string) {
+    const networkFailure = (url: string) => (cause: unknown) =>
+      new LoadError({ source: url, reason: new NetworkFailure({ cause }) })
+
+    const fetchBytes = Effect.fnUntraced(function* (url: string) {
       const response = yield* Effect.tryPromise({
         try: (signal) => fetch(url, { signal }),
-        catch: (cause) => new LoadError({ source: url, reason: new NetworkFailure({ cause }) })
+        catch: networkFailure(url)
       })
       if (!response.ok) {
         return yield* new LoadError({
@@ -187,11 +198,22 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
           reason: new NetworkFailure({ status: response.status })
         })
       }
-      const bytes = yield* Effect.tryPromise({
+      return yield* Effect.tryPromise({
         try: () => response.arrayBuffer(),
-        catch: (cause) => new LoadError({ source: url, reason: new NetworkFailure({ cause }) })
+        catch: networkFailure(url)
       })
-      return yield* decode(bytes, url)
+    })
+
+    // Stryker disable next-line StringLiteral: the span name is only a label.
+    const load = Effect.fn("Audio.load")(function* (source: string) {
+      const bytes =
+        readFile !== undefined && isLocalFile(source)
+          ? yield* Effect.tryPromise({
+              try: (signal) => readFile(source, signal),
+              catch: networkFailure(source)
+            })
+          : yield* fetchBytes(source)
+      return yield* decode(bytes, source)
     })
 
     const createStereo = (pan: number) => {
