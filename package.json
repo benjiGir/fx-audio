@@ -39,7 +39,7 @@
     "test": "vitest run --project unit",
     "coverage": "vitest run --project unit --coverage",
     "check:package": "publint && attw --pack . --profile esm-only",
-    "test:browser": "vitest run --project browser"
+    "test:browser": "vitest run --project \"browser-*\""
   },
   "peerDependencies": {
     "effect": "^4.0.4",
