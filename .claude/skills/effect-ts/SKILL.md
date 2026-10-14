@@ -28,14 +28,22 @@ documentation, which may describe v3.
 - Errors: `Schema.TaggedError`. When a failure has several causes, the error
   carries a `reason` field that is itself a tagged error (or a union of them),
   handled with `Effect.catchReason`. Do not use string literal discriminants.
-- Services: `Context.Service`, with the layers as static members (`layer`, and
-  `layerNoDeps` when it needs other services) and methods written with
-  `Effect.fn("Service.method")`.
+- Data shapes (options, values handed to the user): `Schema.Class`, one
+  declaration for the type, runtime validation of untrusted input and, later,
+  encoding and property-test arbitraries. Plain TypeScript interfaces stay for
+  ports that other code implements structurally (`AudioContextLike`) and for
+  objects made of Effects (`Voice`).
+- Services: `Context.Service` with an empty class body (`class Audio extends
+  Context.Service<Audio, {...}>()("fx-audio/Audio") {}`), and the layer as a
+  separate exported constant named `xLive` (`AudioLive`,
+  `BrowserAudioContextLive`), built with `Layer.effect` and methods written with
+  `Effect.fn("Service.method")`. This is benji's convention and overrides the
+  guide's static `layer`.
 - Resources (audio nodes, listeners, timers): `Effect.acquireRelease`, never a
   hand-written finalizer or an `Effect.runSync` inside an effect.
 - `Effect.fnUntraced` for hot paths such as `play()`.
 - Tests: `@effect/vitest` (`it.effect`, `it.live`, `layer`), with test doubles
-  provided through the `AudioContextService` layer, not module mocks. Plain
+  provided through the `AudioContextService` layer (`FakeAudioContextLive`), not module mocks. Plain
   vitest only for the promise facade and other non-Effect code.
 
 ## Step 3: project rules that override the guide's examples

@@ -45,16 +45,16 @@ export interface AudioContextLike {
 export class AudioContextService extends Context.Service<
   AudioContextService,
   { readonly ctx: AudioContextLike }
->()("fx-audio/AudioContext") {
-  /** Browser layer: one `AudioContext` per layer build, closed with its scope. */
-  static readonly layerBrowser: Layer.Layer<AudioContextService> = Layer.effect(
-    AudioContextService,
-    Effect.gen(function* () {
-      const ctx = yield* Effect.acquireRelease(
-        Effect.sync(() => new AudioContext() as unknown as AudioContextLike),
-        (ctx) => Effect.promise(() => ctx.close())
-      )
-      return AudioContextService.of({ ctx })
-    })
-  )
-}
+>()("fx-audio/AudioContext") {}
+
+/** Browser layer: one `AudioContext` per layer build, closed with its scope. */
+export const BrowserAudioContextLive: Layer.Layer<AudioContextService> = Layer.effect(
+  AudioContextService,
+  Effect.gen(function* () {
+    const ctx = yield* Effect.acquireRelease(
+      Effect.sync(() => new AudioContext() as unknown as AudioContextLike),
+      (ctx) => Effect.promise(() => ctx.close())
+    )
+    return AudioContextService.of({ ctx })
+  })
+)

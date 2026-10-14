@@ -4,16 +4,15 @@ import * as Effect from "effect/Effect"
 import * as Fiber from "effect/Fiber"
 import * as Layer from "effect/Layer"
 import { afterEach, vi } from "vitest"
-import type { Sound } from "../src/index.ts"
-import { Audio, LoadError } from "../src/index.ts"
+import { Audio, AudioLive, LoadError, Sound } from "../src/index.ts"
 import type { FakeContext } from "../src/testing.ts"
-import { layerFake, makeFakeContext } from "../src/testing.ts"
+import { FakeAudioContextLive, makeFakeContext } from "../src/testing.ts"
 
 const buffer = { duration: 1 } as AudioBuffer
-const sound: Sound = { buffer, source: "test.wav" }
+const sound = new Sound({ buffer, source: "test.wav" })
 const bytes = new ArrayBuffer(8)
 
-const audioLayer = (ctx: FakeContext) => Audio.layerNoDeps.pipe(Layer.provide(layerFake(ctx)))
+const audioLayer = (ctx: FakeContext) => AudioLive.pipe(Layer.provide(FakeAudioContextLive(ctx)))
 const decodingContext = () => makeFakeContext({ decodeAudioData: () => Promise.resolve(buffer) })
 
 afterEach(() => {
@@ -25,7 +24,9 @@ describe("Audio.decode", () => {
     Effect.gen(function* () {
       const audio = yield* Audio
       const result = yield* audio.decode(bytes, "a.wav")
-      assert.deepStrictEqual(result, { buffer, source: "a.wav" })
+      assert.instanceOf(result, Sound)
+      assert.strictEqual(result.buffer, buffer)
+      assert.strictEqual(result.source, "a.wav")
     }).pipe(Effect.provide(audioLayer(decodingContext())))
   )
 

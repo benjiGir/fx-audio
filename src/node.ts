@@ -7,7 +7,7 @@ import { AudioContextService } from "./context.ts"
  * Node layer backed by `node-web-audio-api` (loaded lazily so browser users
  * never install or bundle it). `silent` avoids needing a sound card.
  */
-export const layerNode = (
+export const NodeAudioContextLive = (
   options: { readonly silent?: boolean } = {}
 ): Layer.Layer<AudioContextService> =>
   Layer.effect(

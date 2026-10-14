@@ -1,8 +1,8 @@
 import { assert, describe, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
-import { Audio } from "../src/index.ts"
-import { layerNode } from "../src/node.ts"
+import { Audio, AudioLive } from "../src/index.ts"
+import { NodeAudioContextLive } from "../src/node.ts"
 
 /** Mono 16-bit PCM WAV of a 440 Hz tone, built in memory. */
 const makeWav = (seconds: number, sampleRate = 8000): ArrayBuffer => {
@@ -34,9 +34,9 @@ const makeWav = (seconds: number, sampleRate = 8000): ArrayBuffer => {
   return view.buffer as ArrayBuffer
 }
 
-const nodeAudio = Audio.layerNoDeps.pipe(Layer.provide(layerNode({ silent: true })))
+const nodeAudio = AudioLive.pipe(Layer.provide(NodeAudioContextLive({ silent: true })))
 
-describe("layerNode (real engine, no sound card)", () => {
+describe("NodeAudioContextLive (real engine, no sound card)", () => {
   it.live("decodes a WAV and plays it to the end", () =>
     Effect.gen(function* () {
       const audio = yield* Audio

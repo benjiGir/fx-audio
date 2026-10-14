@@ -1,7 +1,7 @@
 import { afterEach, assert, describe, it, vi } from "vitest"
-import { LoadError } from "../src/index.ts"
+import { LoadError, Sound } from "../src/index.ts"
 import { createAudio } from "../src/promise.ts"
-import { layerFake, makeFakeContext } from "../src/testing.ts"
+import { FakeAudioContextLive, makeFakeContext } from "../src/testing.ts"
 
 const buffer = { duration: 1 } as AudioBuffer
 
@@ -11,7 +11,7 @@ afterEach(() => {
 
 const setup = () => {
   const ctx = makeFakeContext({ decodeAudioData: () => Promise.resolve(buffer) })
-  return { ctx, audio: createAudio(layerFake(ctx)) }
+  return { ctx, audio: createAudio(FakeAudioContextLive(ctx)) }
 }
 
 describe("promise facade", () => {
@@ -48,7 +48,7 @@ describe("promise facade", () => {
 
   it("plays, fades, stops and resolves ended", async () => {
     const { ctx, audio } = setup()
-    const voice = audio.play({ buffer, source: "a.wav" }, { volume: 0.5 })
+    const voice = audio.play(new Sound({ buffer, source: "a.wav" }), { volume: 0.5 })
     voice.fadeTo(0, 1.5)
     assert.deepStrictEqual(ctx.gains[0]?.gain.calls.at(-1), { kind: "ramp", value: 0, time: 1.5 })
     voice.stop()
@@ -58,9 +58,18 @@ describe("promise facade", () => {
     await audio.dispose()
   })
 
+  it("throws on invalid play options before touching the engine", async () => {
+    const { ctx, audio } = setup()
+    assert.throws(() =>
+      audio.play(new Sound(new Sound({ buffer, source: "a.wav" })), { volume: -1 })
+    )
+    assert.strictEqual(ctx.sources.length, 0)
+    await audio.dispose()
+  })
+
   it("dispose disconnects voices that are still playing", async () => {
     const { ctx, audio } = setup()
-    audio.play({ buffer, source: "a.wav" })
+    audio.play(new Sound({ buffer, source: "a.wav" }))
     await audio.dispose()
     assert.strictEqual(ctx.sources[0]?.disconnects, 1)
   })

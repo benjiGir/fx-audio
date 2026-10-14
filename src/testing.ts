@@ -114,5 +114,5 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
 }
 
 /** Layer providing the given context, for tests of code built on the core. */
-export const layerFake = (ctx: AudioContextLike): Layer.Layer<AudioContextService> =>
+export const FakeAudioContextLive = (ctx: AudioContextLike): Layer.Layer<AudioContextService> =>
   Layer.succeed(AudioContextService, { ctx })
