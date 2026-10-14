@@ -15,7 +15,7 @@ import {
 } from "../src/index.ts"
 import type { FakeContext } from "../src/testing.ts"
 import { FakeAudioContextLive, makeFakeContext } from "../src/testing.ts"
-import { gainAt, voiceGains } from "./helpers/graph.ts"
+import { gainAt, pannerAt, voiceGains } from "./helpers/graph.ts"
 
 const buffer = { duration: 1 } as AudioBuffer
 const sound = new Sound({ buffer, source: "test.wav" })
@@ -515,5 +515,86 @@ describe("Audio groups", () => {
         [0.5, 0]
       )
     }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+})
+
+describe("stereo pan", () => {
+  const setup = () => {
+    const ctx = makeFakeContext()
+    return { ctx, layer: audioLayer(ctx) }
+  }
+
+  it.effect("builds no panner for a voice that does not ask for one", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.play(sound)
+      assert.strictEqual(ctx.panners.length, 0)
+      assert.deepStrictEqual(ctx.sources[0]?.connections, [gainAt(ctx, 1)])
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("routes a voice with a pan through a panner set to that pan", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.play(sound, { pan: -0.5 })
+      const panner = pannerAt(ctx, 0)
+      assert.strictEqual(panner.pan.value, -0.5)
+      assert.deepStrictEqual(ctx.sources[0]?.connections, [panner])
+      assert.deepStrictEqual(panner.connections, [gainAt(ctx, 1)])
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("setPan moves an existing panner", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const voice = yield* audio.play(sound, { pan: 0 })
+      yield* voice.setPan(1)
+      assert.strictEqual(ctx.panners.length, 1)
+      assert.strictEqual(ctx.panners[0]?.pan.value, 1)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("setPan inserts the panner on a voice that started without one", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const voice = yield* audio.play(sound)
+      yield* voice.setPan(-1)
+      yield* voice.setPan(0.25)
+      const [source] = ctx.sources
+      const panner = pannerAt(ctx, 0)
+      assert.strictEqual(ctx.panners.length, 1)
+      assert.strictEqual(source?.disconnects, 1)
+      assert.deepStrictEqual(source?.connections.at(-1), panner)
+      assert.deepStrictEqual(panner.connections, [gainAt(ctx, 1)])
+      assert.strictEqual(panner.pan.value, 0.25)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("dies on a pan outside -1 to 1 and builds nothing", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const voice = yield* audio.play(sound)
+      const exits = yield* Effect.all([
+        Effect.exit(voice.setPan(1.5)),
+        Effect.exit(voice.setPan(-2)),
+        Effect.exit(voice.setPan(Number.NaN))
+      ])
+      for (const exit of exits) assert.isTrue(exit._tag === "Failure")
+      assert.strictEqual(ctx.panners.length, 0)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("releases the panner with the voice", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.play(sound, { pan: 0.3 }).pipe(Effect.scoped)
+      assert.strictEqual(ctx.panners[0]?.disconnects, 1)
+    }).pipe(Effect.provide(layer))
   })
 })

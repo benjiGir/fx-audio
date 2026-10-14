@@ -33,12 +33,17 @@ export interface GainNodeLike extends AudioNodeLike {
   readonly gain: AudioParamLike
 }
 
+export interface StereoPannerNodeLike extends AudioNodeLike {
+  readonly pan: AudioParamLike
+}
+
 export interface AudioContextLike {
   readonly currentTime: number
   readonly state: string
   readonly destination: AudioNodeLike
   createBufferSource(): SourceNodeLike
   createGain(): GainNodeLike
+  createStereoPanner(): StereoPannerNodeLike
   decodeAudioData(data: ArrayBuffer): Promise<AudioBuffer>
   resume(): Promise<void>
   close(): Promise<void>

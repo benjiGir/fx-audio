@@ -24,6 +24,14 @@ describe("PlayOptions", () => {
     assert.throws(() => decodeOptions({ loop: "yes" }))
   })
 
+  it("accepts a pan from -1 to 1 and rejects anything beyond", () => {
+    assert.strictEqual(decodeOptions({ pan: -1 }).pan, -1)
+    assert.strictEqual(decodeOptions({ pan: 1 }).pan, 1)
+    assert.throws(() => decodeOptions({ pan: 1.01 }))
+    assert.throws(() => decodeOptions({ pan: -1.01 }))
+    assert.throws(() => decodeOptions({ pan: Number.NaN }))
+  })
+
   it("validates when constructed", () => {
     assert.strictEqual(new PlayOptions({ volume: 0 }).volume, 0)
     assert.throws(() => new PlayOptions({ rate: -2 }))

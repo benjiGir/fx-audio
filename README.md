@@ -67,6 +67,18 @@ yield* audio.master.mute // silence everything
 that `unmute` restores. A negative or non-finite volume is a defect. Groups live as long as the layer and are released with it, whichever scope asked for them first.
 The promise facade has the same methods (`group(name)`, `master`, and the group methods on the facade itself).
 
+## Stereo pan
+
+`PlayOptions.pan` places a voice between the left speaker (-1) and the right one (1); 0 is centred.
+`voice.setPan(pan)` moves it afterwards, also for a voice that started without a pan.
+The stereo panner is only built for voices that use one. A value outside -1 to 1 is rejected when options are decoded
+and is a defect for `setPan`.
+
+```ts
+const voice = yield* audio.play(sound, { pan: -1 })
+yield* voice.setPan(1)
+```
+
 ## Codecs
 
 The browser decodes whatever the browser supports. Under Node, `node-web-audio-api` decodes WAV, MP3, Ogg Vorbis, FLAC and AAC in M4A (when the `moov` atom comes first),

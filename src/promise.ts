@@ -16,6 +16,8 @@ export interface PromiseVoice {
   readonly ended: Promise<void>
   stop(): void
   fadeTo(volume: number, seconds: number): void
+  /** Throws a `SchemaError` outside -1 (left) to 1 (right). */
+  setPan(pan: number): void
 }
 
 /** A mixer bus: volume, fade and mute for every voice played through it. */
@@ -52,7 +54,8 @@ export const createAudio = (
   const wrap = (voice: Voice): PromiseVoice => ({
     ended: runtime.runPromise(voice.ended),
     stop: () => runtime.runSync(voice.stop),
-    fadeTo: (volume, seconds) => runtime.runSync(voice.fadeTo(volume, `${seconds} seconds`))
+    fadeTo: (volume, seconds) => runtime.runSync(voice.fadeTo(volume, `${seconds} seconds`)),
+    setPan: (pan) => runtime.runSync(voice.setPan(pan))
   })
   const inScope = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>) =>
     runtime.runSync(effect.pipe(Effect.provideService(Scope.Scope, scope)))
