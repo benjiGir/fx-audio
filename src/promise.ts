@@ -6,7 +6,7 @@ import * as Schema from "effect/Schema"
 import * as Scope from "effect/Scope"
 import type { AudioContextService } from "./context.ts"
 import { BrowserAudioContextLive } from "./context.ts"
-import type { Voice } from "./core.ts"
+import type { Group, Voice } from "./core.ts"
 import { Audio, AudioLive } from "./core.ts"
 import type { Sound, SpriteSheet } from "./model.ts"
 import { PlayOptions } from "./model.ts"
@@ -18,12 +18,26 @@ export interface PromiseVoice {
   fadeTo(volume: number, seconds: number): void
 }
 
-export interface PromiseAudio {
-  load(url: string, signal?: AbortSignal): Promise<Sound>
+/** A mixer bus: volume, fade and mute for every voice played through it. */
+export interface PromiseGroup {
   /** Throws a `SchemaError` when the options are invalid (negative volume, NaN rate, ...). */
   play(sound: Sound, options?: unknown): PromiseVoice
   /** Throws an `UnknownSprite` when the sheet does not define `name`, and a `SchemaError` on invalid options. */
   playSprite(sheet: SpriteSheet, name: string, options?: unknown): PromiseVoice
+  /** Throws a `SchemaError` on a negative or non-finite volume. */
+  setVolume(volume: number): void
+  /** Linear fade, `seconds` long. Throws a `SchemaError` on a negative or non-finite volume. */
+  fadeTo(volume: number, seconds: number): void
+  mute(): void
+  unmute(): void
+}
+
+export interface PromiseAudio extends PromiseGroup {
+  load(url: string, signal?: AbortSignal): Promise<Sound>
+  /** Every sound passes through it: Howler's global volume and mute. `play` and `playSprite` here play on it. */
+  readonly master: PromiseGroup
+  /** A new group, routed through the master and released by `dispose`. */
+  createGroup(): PromiseGroup
   dispose(): Promise<void>
 }
 
@@ -40,32 +54,25 @@ export const createAudio = (
     stop: () => runtime.runSync(voice.stop),
     fadeTo: (volume, seconds) => runtime.runSync(voice.fadeTo(volume, `${seconds} seconds`))
   })
+  const inScope = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>) =>
+    runtime.runSync(effect.pipe(Effect.provideService(Scope.Scope, scope)))
+  const wrapGroup = (group: Group): PromiseGroup => ({
+    play: (sound, options) => wrap(inScope(group.play(sound, decodeOptions(options ?? {})))),
+    playSprite: (sheet, name, options) =>
+      wrap(inScope(group.playSprite(sheet, name, decodeOptions(options ?? {})))),
+    setVolume: (volume) => runtime.runSync(group.setVolume(volume)),
+    fadeTo: (volume, seconds) => runtime.runSync(group.fadeTo(volume, `${seconds} seconds`)),
+    mute: () => runtime.runSync(group.mute),
+    unmute: () => runtime.runSync(group.unmute)
+  })
+  const audio = runtime.runSync(Audio.use(Effect.succeed))
+  const master = wrapGroup(audio.master)
   return {
+    ...master,
+    master,
     load: (url, signal) =>
-      runtime.runPromise(
-        Audio.use((audio) => audio.load(url)),
-        signal === undefined ? undefined : { signal }
-      ),
-    play: (sound, options) => {
-      const decoded = decodeOptions(options ?? {})
-      return wrap(
-        runtime.runSync(
-          Audio.use((audio) => audio.play(sound, decoded)).pipe(
-            Effect.provideService(Scope.Scope, scope)
-          )
-        )
-      )
-    },
-    playSprite: (sheet, name, options) => {
-      const decoded = decodeOptions(options ?? {})
-      return wrap(
-        runtime.runSync(
-          Audio.use((audio) => audio.playSprite(sheet, name, decoded)).pipe(
-            Effect.provideService(Scope.Scope, scope)
-          )
-        )
-      )
-    },
+      runtime.runPromise(audio.load(url), signal === undefined ? undefined : { signal }),
+    createGroup: () => wrapGroup(inScope(audio.makeGroup())),
     dispose: async () => {
       await runtime.runPromise(Scope.close(scope, Exit.void))
       await runtime.dispose()

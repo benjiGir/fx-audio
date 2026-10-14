@@ -19,6 +19,9 @@ const stubAudioContext = () => {
     "AudioContext",
     class {
       close = close
+      destination = {}
+      // Building the service creates the master group's gain node.
+      createGain = () => ({ connect: () => undefined, disconnect: () => undefined, gain: {} })
       constructor() {
         instances.push(this)
       }

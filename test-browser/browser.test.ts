@@ -1,11 +1,13 @@
 import { assert, describe, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
+import type * as Scope from "effect/Scope"
 import {
   Audio,
   AudioContextService,
   AudioLive,
   BrowserAudioContextLive,
+  type LoadError,
   type Sound,
   SpriteSegment,
   SpriteSheet
@@ -159,6 +161,67 @@ describe("sprites on a real engine (offline render)", () => {
       Effect.provide(AudioLive.pipe(Layer.provide(layer)))
     )
   })
+})
+
+describe("groups on a real engine (offline render)", () => {
+  const run = (
+    program: (audio: Audio["Service"]) => Effect.Effect<void, LoadError, Scope.Scope>
+  ) => {
+    const { layer, render } = makeOfflineContext(0.3)
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* program(audio)
+      return yield* Effect.promise(render)
+    }).pipe(
+      Effect.scoped,
+      Effect.timeout("10 seconds"),
+      Effect.provide(AudioLive.pipe(Layer.provide(layer)))
+    )
+  }
+
+  it.live("scales its voices by the group volume on top of their own", () =>
+    Effect.gen(function* () {
+      const rendered = yield* run((audio) =>
+        Effect.gen(function* () {
+          const sound = yield* audio.decode(makeWav(0.2), "tone.wav")
+          const group = yield* audio.makeGroup()
+          yield* group.setVolume(0.5)
+          yield* group.play(sound, { volume: 0.5 })
+        })
+      )
+      // The tone peaks at about 0.37; times 0.5 times 0.5 that is about 0.09.
+      assert.closeTo(peak(rendered), 0.092, 0.02)
+    })
+  )
+
+  it.live("a muted group is silent", () =>
+    Effect.gen(function* () {
+      const rendered = yield* run((audio) =>
+        Effect.gen(function* () {
+          const sound = yield* audio.decode(makeWav(0.2), "tone.wav")
+          const group = yield* audio.makeGroup()
+          yield* group.mute
+          yield* group.play(sound)
+        })
+      )
+      assert.isBelow(peak(rendered), 0.001)
+    })
+  )
+
+  it.live("the master scales every group", () =>
+    Effect.gen(function* () {
+      const rendered = yield* run((audio) =>
+        Effect.gen(function* () {
+          const sound = yield* audio.decode(makeWav(0.2), "tone.wav")
+          const group = yield* audio.makeGroup()
+          yield* audio.master.setVolume(0.5)
+          yield* group.setVolume(0.5)
+          yield* group.play(sound)
+        })
+      )
+      assert.closeTo(peak(rendered), 0.092, 0.02)
+    })
+  )
 })
 
 describe("play() cost on the calling thread", () => {

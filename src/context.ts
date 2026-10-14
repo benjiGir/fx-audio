@@ -15,6 +15,7 @@ export interface AudioParamLike {
   value: number
   setValueAtTime(value: number, time: number): unknown
   linearRampToValueAtTime(value: number, time: number): unknown
+  cancelScheduledValues(time: number): unknown
 }
 
 export interface SourceNodeLike extends AudioNodeLike {

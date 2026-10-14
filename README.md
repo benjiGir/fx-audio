@@ -15,7 +15,7 @@ It aims to replace Howler.js with a smaller, faster, fully typed and thoroughly 
 
 | Import | Content |
 | --- | --- |
-| `fx-audio` | Effect core (`Audio` service with `load`, `decode`, `play`, `playSprite`; `Sound`, `PlayOptions`, `SpriteSheet`, `LoadError`) and the browser layers |
+| `fx-audio` | Effect core (`Audio` service with `load`, `decode`, `play`, `playSprite`, `master`, `makeGroup`; `Sound`, `PlayOptions`, `SpriteSheet`, `LoadError`) and the browser layers |
 | `fx-audio/node` | `NodeAudioContextLive`, on top of `node-web-audio-api` |
 | `fx-audio/promise` | Promise facade for code that does not use Effect |
 | `fx-audio/testing` | `makeFakeContext` and `FakeAudioContextLive`, an audio context double for tests |
@@ -43,6 +43,28 @@ const voice = yield* audio.playSprite(sheet, "hit", { volume: 0.8 })
 
 `playSprite` fails with `UnknownSprite` (listing the available names) when the sheet has no such segment.
 A looping segment loops inside its own bounds. `PlayOptions.loop`, when given, overrides the segment's `loop` flag.
+
+## Groups
+
+A group is a mixer bus: every voice played through it shares one gain, so music, effects and voice-over
+can each be turned down, faded or muted at once. Every sound, grouped or not, ends up in the master group,
+which plays the role of Howler's global volume and mute.
+
+```ts
+const music = yield* audio.makeGroup()
+yield* music.setVolume(0.4)
+yield* music.play(theme, { loop: true })
+
+yield* music.fadeTo(0, Duration.seconds(2)) // linear fade, scheduled on the audio thread
+yield* music.mute // remembers the volume
+yield* music.unmute
+
+yield* audio.master.mute // silence everything
+```
+
+`setVolume` cancels a fade in progress. While a group is muted, `setVolume` and `fadeTo` only change the volume
+that `unmute` restores. A negative or non-finite volume is a defect. A group is released with the surrounding `Scope`.
+The promise facade has the same methods (`createGroup()`, `master`, and the group methods on the facade itself).
 
 ## Codecs
 
