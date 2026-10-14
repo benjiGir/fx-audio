@@ -9,7 +9,7 @@ import {
   AudioContextService,
   AudioLive,
   BrowserAudioContextLive,
-  type LoadError,
+  LoadError,
   type Sound,
   SpriteSegment,
   SpriteSheet,
@@ -41,6 +41,30 @@ describe("resuming on a real user gesture", () => {
         assert.strictEqual(ctx.state, "running")
       }
     }).pipe(Effect.provide(BrowserAudioContextLive), Effect.scoped)
+  )
+})
+
+describe("streaming through a real media element", () => {
+  const wavUrl = () => URL.createObjectURL(new Blob([makeWav(0.5)], { type: "audio/wav" }))
+
+  it.live("a missing file fails with a typed LoadError", () =>
+    Effect.gen(function* () {
+      const audio = yield* Audio
+      const error = yield* audio.stream("/no-such-file.wav").pipe(Effect.flip, Effect.scoped)
+      assert.instanceOf(error, LoadError)
+    }).pipe(Effect.provide(realAudio))
+  )
+
+  it.live("plays a file, then stops and releases it", () =>
+    Effect.gen(function* () {
+      yield* Effect.promise(() => userEvent.click(document.body))
+      const audio = yield* Audio
+      const url = wavUrl()
+      const voice = yield* audio.stream(url)
+      yield* voice.stop
+      yield* voice.ended
+      URL.revokeObjectURL(url)
+    }).pipe(Effect.scoped, Effect.provide(realAudio))
   )
 })
 

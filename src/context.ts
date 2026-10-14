@@ -73,6 +73,22 @@ export interface AudioListenerLike {
   setOrientation?(x: number, y: number, z: number, xUp: number, yUp: number, zUp: number): void
 }
 
+/** The part of `HTMLAudioElement` the streaming path uses. */
+export interface MediaElementLike {
+  src: string
+  crossOrigin: string | null
+  preload: string
+  loop: boolean
+  playbackRate: number
+  readonly error: { readonly code: number } | null
+  play(): Promise<void>
+  pause(): void
+  load(): void
+  removeAttribute(name: string): void
+  addEventListener(type: "canplay" | "ended" | "error", listener: () => void): void
+  removeEventListener(type: "canplay" | "ended" | "error", listener: () => void): void
+}
+
 export interface AudioContextLike {
   readonly currentTime: number
   readonly state: string
@@ -82,6 +98,7 @@ export interface AudioContextLike {
   createGain(): GainNodeLike
   createStereoPanner(): StereoPannerNodeLike
   createPanner(): PannerNodeLike
+  createMediaElementSource(element: MediaElementLike): AudioNodeLike
   decodeAudioData(data: ArrayBuffer): Promise<AudioBuffer>
   resume(): Promise<void>
   close(): Promise<void>
@@ -90,7 +107,11 @@ export interface AudioContextLike {
 /** The audio context as an Effect service, provided by a Layer per platform. */
 export class AudioContextService extends Context.Service<
   AudioContextService,
-  { readonly ctx: AudioContextLike }
+  {
+    readonly ctx: AudioContextLike
+    /** Builds the element a stream plays through. Left out where there is none, as under Node. */
+    readonly createMediaElement?: () => MediaElementLike
+  }
 >()("fx-audio/AudioContext") {}
 
 const gestures = ["pointerdown", "keydown", "touchend"] as const
@@ -137,6 +158,6 @@ export const BrowserAudioContextLive: Layer.Layer<AudioContextService> = Layer.e
       (ctx) => Effect.promise(() => ctx.close())
     )
     yield* resumeOnGesture(ctx)
-    return AudioContextService.of({ ctx })
+    return AudioContextService.of({ ctx, createMediaElement: () => new Audio() })
   })
 )

@@ -26,6 +26,9 @@ export const makeOfflineContext = (seconds = 0.5, sampleRate = 44100, channels =
     createBufferSource: () => offline.createBufferSource() as unknown as SourceNodeLike,
     createGain: () => offline.createGain() as unknown as GainNodeLike,
     listener: offline.listener as unknown as AudioContextLike["listener"],
+    createMediaElementSource: () => {
+      throw new Error("an OfflineAudioContext cannot take a media element")
+    },
     createPanner: () => offline.createPanner() as unknown as PannerNodeLike,
     createStereoPanner: () => offline.createStereoPanner() as unknown as StereoPannerNodeLike,
     decodeAudioData: (data) => offline.decodeAudioData(data),

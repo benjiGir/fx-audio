@@ -10,6 +10,7 @@ import * as Semaphore from "effect/Semaphore"
 import type {
   AudioNodeLike,
   AudioParamLike,
+  MediaElementLike,
   PannerNodeLike,
   StereoPannerNodeLike
 } from "./context.ts"
@@ -18,6 +19,8 @@ import {
   DecodeFailure,
   LoadError,
   NetworkFailure,
+  PlaybackBlocked,
+  StreamingUnavailable,
   UnknownSprite,
   UnsupportedFormat
 } from "./errors.ts"
@@ -73,6 +76,17 @@ export interface Group {
     name: string,
     options?: PlayOptions
   ) => Effect.Effect<Voice, UnknownSprite, Scope.Scope>
+  /**
+   * Play a long sound, such as music, while it downloads, through a media element instead of
+   * a decoded buffer. Resolves once the browser can start and playback has begun. Takes the
+   * same options as `play`; `rate` and `loop` apply to the element. Fails with `LoadError`
+   * (`StreamingUnavailable` where there is no media element, as under Node; browsers report
+   * a missing file as `UnsupportedFormat`) and with `PlaybackBlocked` before a user gesture.
+   */
+  readonly stream: (
+    url: string,
+    options?: PlayOptions
+  ) => Effect.Effect<Voice, LoadError | PlaybackBlocked, Scope.Scope>
   /** Set the volume at once, cancelling a fade in progress. Dies on a negative or non-finite volume. */
   readonly setVolume: (volume: number) => Effect.Effect<void>
   /** Linear fade to `volume`. While muted, only the volume restored by `unmute` changes. */
@@ -115,6 +129,11 @@ export class Audio extends Context.Service<
       name: string,
       options?: PlayOptions
     ): Effect.Effect<Voice, UnknownSprite, Scope.Scope>
+    /** Stream a long sound on the master group, see `Group.stream`. */
+    stream(
+      url: string,
+      options?: PlayOptions
+    ): Effect.Effect<Voice, LoadError | PlaybackBlocked, Scope.Scope>
     /** The group every other group and every plain `play` ends up in: Howler's global volume and mute. */
     readonly master: Group
     /**
@@ -137,7 +156,7 @@ export class Audio extends Context.Service<
 export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.effect(
   Audio,
   Effect.gen(function* () {
-    const { ctx } = yield* AudioContextService
+    const { ctx, createMediaElement } = yield* AudioContextService
 
     const decode = Effect.fn("Audio.decode")(function* (bytes: ArrayBuffer, source: string) {
       const buffer = yield* Effect.tryPromise({
@@ -198,82 +217,37 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       return panner
     }
 
-    const startVoice = Effect.fnUntraced(function* (
-      sound: Sound,
-      options: PlayOptions,
-      segment: SpriteSegment | undefined,
-      output: AudioNodeLike
-    ): Effect.fn.Return<Voice, never, Scope.Scope> {
-      const ended = yield* Deferred.make<void>()
-      const { source, gain, route, wire } = yield* Effect.acquireRelease(
-        Effect.sync(() => {
-          const source = ctx.createBufferSource()
-          const gain = ctx.createGain()
-          // The optional stages between source and gain, in signal order.
-          const route: { stereo?: StereoPannerNodeLike; spatial?: PannerNodeLike } = {}
-          // source -> [stereo] -> [spatial] -> gain: a stage is only built for voices that ask for one.
-          const wire = () => {
-            let from: AudioNodeLike = source
-            for (const stage of [route.stereo, route.spatial]) {
-              if (stage === undefined) continue
-              from.connect(stage)
-              from = stage
-            }
-            from.connect(gain)
-          }
-          source.buffer = sound.buffer
-          source.loop = options.loop ?? segment?.loop ?? false
-          if (options.rate !== undefined) source.playbackRate.value = options.rate
-          gain.gain.value = options.volume ?? 1
-          if (options.pan !== undefined) route.stereo = createStereo(options.pan)
-          if (options.spatial !== undefined) route.spatial = createSpatial(options.spatial)
-          wire()
-          gain.connect(output)
-          source.onended = () => Deferred.doneUnsafe(ended, Effect.void)
-          if (segment === undefined) {
-            source.start()
-          } else {
-            // The Web Audio API counts in seconds, sprite segments in milliseconds.
-            const start = segment.start / 1000
-            const duration = segment.duration / 1000
-            if (source.loop) {
-              // A looping source plays until stopped, so the segment bounds the loop instead.
-              source.loopStart = start
-              source.loopEnd = start + duration
-              source.start(0, start)
-            } else {
-              source.start(0, start, duration)
-            }
-          }
-          return { source, gain, route, wire }
-        }),
-        ({ source, gain, route }) =>
-          Effect.suspend(() => {
-            source.onended = null
-            try {
-              source.stop()
-            } catch {
-              // already stopped
-            }
-            source.disconnect()
-            route.stereo?.disconnect()
-            route.spatial?.disconnect()
-            gain.disconnect()
-            return Deferred.succeed(ended, undefined)
-          })
-      )
+    /**
+     * What every voice has after its source: [stereo] -> [spatial] -> gain -> output,
+     * and the controls that act on those nodes. The source node is the caller's.
+     */
+    const buildChain = (input: AudioNodeLike, options: PlayOptions, output: AudioNodeLike) => {
+      const gain = ctx.createGain()
+      // The optional stages between the source and the gain, in signal order.
+      const route: { stereo?: StereoPannerNodeLike; spatial?: PannerNodeLike } = {}
+      // source -> [stereo] -> [spatial] -> gain: a stage is only built for voices that ask for one.
+      const wire = () => {
+        let from: AudioNodeLike = input
+        for (const stage of [route.stereo, route.spatial]) {
+          if (stage === undefined) continue
+          from.connect(stage)
+          from = stage
+        }
+        from.connect(gain)
+      }
       // Adding a stage means breaking the links of the nodes already chained, then chaining again.
       const rewire = () => {
-        source.disconnect()
+        input.disconnect()
         route.stereo?.disconnect()
         route.spatial?.disconnect()
         wire()
       }
-      return {
-        ended: Deferred.await(ended),
-        stop: Effect.sync(() => {
-          source.stop()
-        }),
+      gain.gain.value = options.volume ?? 1
+      if (options.pan !== undefined) route.stereo = createStereo(options.pan)
+      if (options.spatial !== undefined) route.spatial = createSpatial(options.spatial)
+      wire()
+      gain.connect(output)
+      const controls: Pick<Voice, "fadeTo" | "setPan" | "setPosition"> = {
         fadeTo: (volume, over) =>
           Effect.sync(() => {
             const now = ctx.currentTime
@@ -301,6 +275,158 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
               setVector([positionX, positionY, positionZ], position)
             }
           })
+      }
+      const release = () => {
+        route.stereo?.disconnect()
+        route.spatial?.disconnect()
+        gain.disconnect()
+      }
+      return { controls, release }
+    }
+
+    const startVoice = Effect.fnUntraced(function* (
+      sound: Sound,
+      options: PlayOptions,
+      segment: SpriteSegment | undefined,
+      output: AudioNodeLike
+    ): Effect.fn.Return<Voice, never, Scope.Scope> {
+      const ended = yield* Deferred.make<void>()
+      const { source, chain } = yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          const source = ctx.createBufferSource()
+          source.buffer = sound.buffer
+          source.loop = options.loop ?? segment?.loop ?? false
+          if (options.rate !== undefined) source.playbackRate.value = options.rate
+          const chain = buildChain(source, options, output)
+          source.onended = () => Deferred.doneUnsafe(ended, Effect.void)
+          if (segment === undefined) {
+            source.start()
+          } else {
+            // The Web Audio API counts in seconds, sprite segments in milliseconds.
+            const start = segment.start / 1000
+            const duration = segment.duration / 1000
+            if (source.loop) {
+              // A looping source plays until stopped, so the segment bounds the loop instead.
+              source.loopStart = start
+              source.loopEnd = start + duration
+              source.start(0, start)
+            } else {
+              source.start(0, start, duration)
+            }
+          }
+          return { source, chain }
+        }),
+        ({ source, chain }) =>
+          Effect.suspend(() => {
+            source.onended = null
+            try {
+              source.stop()
+            } catch {
+              // already stopped
+            }
+            source.disconnect()
+            chain.release()
+            return Deferred.succeed(ended, undefined)
+          })
+      )
+      return {
+        ended: Deferred.await(ended),
+        stop: Effect.sync(() => {
+          source.stop()
+        }),
+        ...chain.controls
+      }
+    })
+
+    /** The browser's own mapping of `MediaError.code`; a missing or aborted error counts as the network. */
+    const streamFailure = (url: string, element: MediaElementLike) => {
+      const cause = element.error
+      const reason =
+        cause?.code === 3
+          ? new DecodeFailure({ cause })
+          : cause?.code === 4
+            ? new UnsupportedFormat({ cause })
+            : new NetworkFailure({ cause })
+      return new LoadError({ source: url, reason })
+    }
+
+    const startStream = Effect.fnUntraced(function* (
+      url: string,
+      options: PlayOptions,
+      output: AudioNodeLike
+    ): Effect.fn.Return<Voice, LoadError | PlaybackBlocked, Scope.Scope> {
+      if (createMediaElement === undefined) {
+        return yield* new LoadError({ source: url, reason: new StreamingUnavailable() })
+      }
+      const ended = yield* Deferred.make<void>()
+      const onEnded = () => Deferred.doneUnsafe(ended, Effect.void)
+      // Released as soon as the stream fails or is interrupted, not only when the scope closes.
+      let released = false
+      const release = (
+        element: MediaElementLike,
+        source: AudioNodeLike,
+        chain: { release(): void }
+      ) =>
+        Effect.suspend(() => {
+          if (released) return Effect.void
+          released = true
+          element.removeEventListener("ended", onEnded)
+          element.pause()
+          // Dropping the source and reloading is how a media element lets go of its connection.
+          element.removeAttribute("src")
+          element.load()
+          source.disconnect()
+          chain.release()
+          return Deferred.succeed(ended, undefined)
+        })
+      const { element, source, chain } = yield* Effect.acquireRelease(
+        Effect.sync(() => {
+          const element = createMediaElement()
+          // Without CORS the browser silences a cross-origin element routed into the audio graph.
+          element.crossOrigin = "anonymous"
+          element.preload = "auto"
+          element.loop = options.loop ?? false
+          if (options.rate !== undefined) element.playbackRate = options.rate
+          const source = ctx.createMediaElementSource(element)
+          const chain = buildChain(source, options, output)
+          element.addEventListener("ended", onEnded)
+          return { element, source, chain }
+        }),
+        ({ element, source, chain }) => release(element, source, chain)
+      )
+      yield* Effect.callback<void, LoadError>((resume) => {
+        const cleanup = () => {
+          element.removeEventListener("canplay", onReady)
+          element.removeEventListener("error", onError)
+        }
+        const onReady = () => {
+          cleanup()
+          resume(Effect.void)
+        }
+        const onError = () => {
+          cleanup()
+          resume(Effect.fail(streamFailure(url, element)))
+        }
+        element.addEventListener("canplay", onReady)
+        element.addEventListener("error", onError)
+        element.src = url
+        return Effect.sync(cleanup)
+      }).pipe(
+        Effect.andThen(
+          Effect.tryPromise({
+            try: () => element.play(),
+            catch: (cause) => new PlaybackBlocked({ source: url, cause })
+          })
+        ),
+        Effect.onError(() => release(element, source, chain))
+      )
+      return {
+        ended: Deferred.await(ended),
+        stop: Effect.suspend(() => {
+          element.pause()
+          return Deferred.succeed(ended, undefined)
+        }).pipe(Effect.asVoid),
+        ...chain.controls
       }
     })
 
@@ -370,6 +496,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       const group: Group = {
         play: (sound, options = {}) => startVoice(sound, options, undefined, node),
         playSprite: spriteOn(node),
+        stream: (url, options = {}) => startStream(url, options, node),
         setVolume,
         fadeTo,
         mute,
@@ -441,6 +568,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       load,
       play: master.play,
       playSprite: master.playSprite,
+      stream: master.stream,
       master,
       group,
       listener: listenerService,
