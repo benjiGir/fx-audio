@@ -1,4 +1,6 @@
 import * as Context from "effect/Context"
+import * as Effect from "effect/Effect"
+import * as Layer from "effect/Layer"
 
 /**
  * Smallest surface of the Web Audio API the core needs. Browser, Node
@@ -43,4 +45,16 @@ export interface AudioContextLike {
 export class AudioContextService extends Context.Service<
   AudioContextService,
   { readonly ctx: AudioContextLike }
->()("fx-audio/AudioContext") {}
+>()("fx-audio/AudioContext") {
+  /** Browser layer: one `AudioContext` per layer build, closed with its scope. */
+  static readonly layerBrowser: Layer.Layer<AudioContextService> = Layer.effect(
+    AudioContextService,
+    Effect.gen(function* () {
+      const ctx = yield* Effect.acquireRelease(
+        Effect.sync(() => new AudioContext() as unknown as AudioContextLike),
+        (ctx) => Effect.promise(() => ctx.close())
+      )
+      return AudioContextService.of({ ctx })
+    })
+  )
+}

@@ -13,27 +13,36 @@ MIT License, Copyright (c) 2023 Effectful Technologies Inc.
 ## Step 1: read the official guide
 
 Before writing any Effect code, read `node_modules/effect/AGENTS.md`
-**completely** (at the repository root, or in `spike/node_modules/effect/` while
-only the spike has installed dependencies), and follow its links when needed.
-If `node_modules` is missing, install dependencies first. Do not install
-`effect@latest`: the version is pinned in `package.json` (peer dependency).
+**completely**, then read the linked examples in
+`node_modules/effect/ai-docs/src/` that match the code you are about to write
+(services, errors, resources, testing, integration). If `node_modules` is
+missing, install dependencies first. Do not install `effect@latest`: the
+version is pinned in `package.json` (peer dependency).
 
 For APIs the guide does not cover, search the source in
 `node_modules/effect/src` rather than relying on memory or on external
 documentation, which may describe v3.
 
-## Step 2: project rules that override the guide's examples
+## Step 2: follow the guide's patterns
+
+- Errors: `Schema.TaggedError`. When a failure has several causes, the error
+  carries a `reason` field that is itself a tagged error (or a union of them),
+  handled with `Effect.catchReason`. Do not use string literal discriminants.
+- Services: `Context.Service`, with the layers as static members (`layer`, and
+  `layerNoDeps` when it needs other services) and methods written with
+  `Effect.fn("Service.method")`.
+- Resources (audio nodes, listeners, timers): `Effect.acquireRelease`, never a
+  hand-written finalizer or an `Effect.runSync` inside an effect.
+- `Effect.fnUntraced` for hot paths such as `play()`.
+- Tests: `@effect/vitest` (`it.effect`, `it.live`, `layer`), with test doubles
+  provided through the `AudioContextService` layer, not module mocks. Plain
+  vitest only for the promise facade and other non-Effect code.
+
+## Step 3: project rules that override the guide's examples
 
 - **Subpath imports only**: `import * as Effect from "effect/Effect"`, never
   `import { Effect } from "effect"`. The barrel import costs 30 to 38 kB gzip
-  (measured in the spike) and defeats tree-shaking. The guide's examples use the
-  barrel form; translate them.
+  (measured) and defeats tree-shaking. The guide's examples use the barrel
+  form; translate them.
 - **No `unstable` modules** and no `@stability unstable` or `experimental` API in
   the public surface of the library.
-- Prefer `Effect.fnUntraced` on hot paths such as `play()`; use `Effect.fn("name")`
-  where a tracing span is useful.
-- Typed errors with a `reason` discriminant (see `LoadError` in the spike, `spike/src/errors.ts`), no thrown
-  exceptions across the public API.
-- Every resource (audio node, event listener, timer) is released through a
-  `Scope` finalizer.
-- Test doubles go through the `AudioContextService` layer, not module mocks.

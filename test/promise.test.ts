@@ -1,6 +1,7 @@
 import { afterEach, assert, describe, it, vi } from "vitest"
+import { LoadError } from "../src/index.ts"
 import { createAudio } from "../src/promise.ts"
-import { FakeContextLive, makeFakeContext } from "../src/testing.ts"
+import { layerFake, makeFakeContext } from "../src/testing.ts"
 
 const buffer = { duration: 1 } as AudioBuffer
 
@@ -10,7 +11,7 @@ afterEach(() => {
 
 const setup = () => {
   const ctx = makeFakeContext({ decodeAudioData: () => Promise.resolve(buffer) })
-  return { ctx, audio: createAudio(FakeContextLive(ctx)) }
+  return { ctx, audio: createAudio(layerFake(ctx)) }
 }
 
 describe("promise facade", () => {
@@ -26,7 +27,8 @@ describe("promise facade", () => {
     vi.stubGlobal("fetch", () => Promise.reject(new TypeError("offline")))
     const { audio } = setup()
     const error = await audio.load("https://x/a.wav").catch((e: unknown) => e)
-    assert.match(String(error), /LoadError/)
+    assert.instanceOf(error, LoadError)
+    assert.strictEqual((error as LoadError).reason._tag, "NetworkFailure")
     await audio.dispose()
   })
 

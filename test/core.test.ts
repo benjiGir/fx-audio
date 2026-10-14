@@ -2,83 +2,109 @@ import { assert, describe, it } from "@effect/vitest"
 import * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
 import * as Fiber from "effect/Fiber"
-import type * as Scope from "effect/Scope"
+import * as Layer from "effect/Layer"
 import { afterEach, vi } from "vitest"
-import type { AudioContextService, Sound } from "../src/index.ts"
-import { decode, LoadError, load, play } from "../src/index.ts"
-import { FakeContextLive, makeFakeContext } from "../src/testing.ts"
+import type { Sound } from "../src/index.ts"
+import { Audio, LoadError } from "../src/index.ts"
+import type { FakeContext } from "../src/testing.ts"
+import { layerFake, makeFakeContext } from "../src/testing.ts"
 
 const buffer = { duration: 1 } as AudioBuffer
 const sound: Sound = { buffer, source: "test.wav" }
 const bytes = new ArrayBuffer(8)
 
+const audioLayer = (ctx: FakeContext) => Audio.layerNoDeps.pipe(Layer.provide(layerFake(ctx)))
+const decodingContext = () => makeFakeContext({ decodeAudioData: () => Promise.resolve(buffer) })
+
 afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-describe("decode", () => {
+describe("Audio.decode", () => {
   it.effect("returns the decoded sound with its source", () =>
     Effect.gen(function* () {
-      const ctx = makeFakeContext({ decodeAudioData: () => Promise.resolve(buffer) })
-      const result = yield* decode(bytes, "a.wav").pipe(Effect.provide(FakeContextLive(ctx)))
+      const audio = yield* Audio
+      const result = yield* audio.decode(bytes, "a.wav")
       assert.deepStrictEqual(result, { buffer, source: "a.wav" })
-    })
+    }).pipe(Effect.provide(audioLayer(decodingContext())))
   )
 
-  it.effect("maps an unsupported codec to unsupported-format", () =>
+  it.effect("maps an unsupported codec to UnsupportedFormat", () =>
     Effect.gen(function* () {
-      const ctx = makeFakeContext({
-        decodeAudioData: () => Promise.reject(new Error("Unsupported codec"))
-      })
-      const error = yield* decode(bytes, "a.opus").pipe(
-        Effect.provide(FakeContextLive(ctx)),
-        Effect.flip
-      )
+      const audio = yield* Audio
+      const error = yield* Effect.flip(audio.decode(bytes, "a.opus"))
       assert.instanceOf(error, LoadError)
-      assert.strictEqual(error.reason, "unsupported-format")
+      assert.strictEqual(error.reason._tag, "UnsupportedFormat")
       assert.strictEqual(error.source, "a.opus")
-    })
+    }).pipe(
+      Effect.provide(
+        audioLayer(
+          makeFakeContext({ decodeAudioData: () => Promise.reject(new Error("Unsupported codec")) })
+        )
+      )
+    )
   )
 
-  it.effect("maps any other decoder failure to decode", () =>
+  it.effect("maps any other decoder failure to DecodeFailure", () =>
     Effect.gen(function* () {
-      const error = yield* decode(bytes, "a.mp3").pipe(
-        Effect.provide(FakeContextLive(makeFakeContext())),
-        Effect.flip
-      )
-      assert.strictEqual(error.reason, "decode")
-    })
+      const audio = yield* Audio
+      const error = yield* Effect.flip(audio.decode(bytes, "a.mp3"))
+      assert.strictEqual(error.reason._tag, "DecodeFailure")
+    }).pipe(Effect.provide(audioLayer(makeFakeContext())))
+  )
+
+  it.effect("lets callers recover from one reason with catchReason", () =>
+    Effect.gen(function* () {
+      const audio = yield* Audio
+      const recovered = yield* audio
+        .decode(bytes, "a.mp3")
+        .pipe(Effect.catchReason("LoadError", "DecodeFailure", () => Effect.succeed("fallback")))
+      assert.strictEqual(recovered, "fallback")
+    }).pipe(Effect.provide(audioLayer(makeFakeContext())))
   )
 })
 
-describe("load", () => {
-  const ctxLayer = () =>
-    FakeContextLive(makeFakeContext({ decodeAudioData: () => Promise.resolve(buffer) }))
+describe("Audio.load", () => {
+  const layer = () => audioLayer(decodingContext())
 
   it.effect("fetches then decodes", () =>
     Effect.gen(function* () {
       vi.stubGlobal("fetch", () => Promise.resolve(new Response(bytes)))
-      const result = yield* load("https://x/a.wav").pipe(Effect.provide(ctxLayer()))
+      const audio = yield* Audio
+      const result = yield* audio.load("https://x/a.wav")
       assert.strictEqual(result.source, "https://x/a.wav")
       assert.strictEqual(result.buffer, buffer)
-    })
+    }).pipe(Effect.provide(layer()))
   )
 
-  it.effect("reports a network failure", () =>
+  it.effect("reports a failed request as NetworkFailure", () =>
     Effect.gen(function* () {
       vi.stubGlobal("fetch", () => Promise.reject(new TypeError("offline")))
-      const error = yield* load("https://x/a.wav").pipe(Effect.provide(ctxLayer()), Effect.flip)
-      assert.strictEqual(error.reason, "network")
-    })
+      const audio = yield* Audio
+      const error = yield* Effect.flip(audio.load("https://x/a.wav"))
+      assert.strictEqual(error.reason._tag, "NetworkFailure")
+    }).pipe(Effect.provide(layer()))
   )
 
-  it.effect("reports an HTTP error status as a network failure", () =>
+  it.effect("reports an HTTP error status as NetworkFailure with the status", () =>
     Effect.gen(function* () {
       vi.stubGlobal("fetch", () => Promise.resolve(new Response("nope", { status: 404 })))
-      const error = yield* load("https://x/a.wav").pipe(Effect.provide(ctxLayer()), Effect.flip)
-      assert.strictEqual(error.reason, "network")
-      assert.match(String(error.cause), /404/)
-    })
+      const audio = yield* Audio
+      const error = yield* Effect.flip(audio.load("https://x/a.wav"))
+      assert.strictEqual(error.reason._tag, "NetworkFailure")
+      assert.strictEqual(error.reason._tag === "NetworkFailure" ? error.reason.status : 0, 404)
+    }).pipe(Effect.provide(layer()))
+  )
+
+  it.effect("reports a body that cannot be read as NetworkFailure", () =>
+    Effect.gen(function* () {
+      const response = new Response(bytes)
+      vi.spyOn(response, "arrayBuffer").mockRejectedValue(new TypeError("connection reset"))
+      vi.stubGlobal("fetch", () => Promise.resolve(response))
+      const audio = yield* Audio
+      const error = yield* Effect.flip(audio.load("https://x/a.wav"))
+      assert.strictEqual(error.reason._tag, "NetworkFailure")
+    }).pipe(Effect.provide(layer()))
   )
 
   it.live("aborts the request when interrupted", () =>
@@ -88,138 +114,114 @@ describe("load", () => {
         signal = init.signal ?? undefined
         return new Promise(() => {})
       })
-      const fiber = yield* Effect.forkChild(
-        load("https://x/a.wav").pipe(Effect.provide(ctxLayer()))
-      )
+      const audio = yield* Audio
+      const fiber = yield* Effect.forkChild(audio.load("https://x/a.wav"))
       yield* Effect.yieldNow
       yield* Fiber.interrupt(fiber)
       assert.isTrue(signal?.aborted)
-    })
+    }).pipe(Effect.provide(layer()))
   )
 })
 
-describe("play", () => {
-  const run = <A, E>(
-    effect: Effect.Effect<A, E, AudioContextService | Scope.Scope>,
-    ctx = makeFakeContext()
-  ) => effect.pipe(Effect.scoped, Effect.provide(FakeContextLive(ctx)))
+describe("Audio.play", () => {
+  it.effect("wires source to gain to destination with the given options", () => {
+    const ctx = makeFakeContext()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.play(sound, { volume: 0.5, rate: 2, loop: true })
+      const [source] = ctx.sources
+      const [gain] = ctx.gains
+      assert.strictEqual(source?.buffer, buffer)
+      assert.isTrue(source?.loop)
+      assert.strictEqual(source?.playbackRate.value, 2)
+      assert.strictEqual(gain?.gain.value, 0.5)
+      assert.strictEqual(source?.starts, 1)
+    }).pipe(Effect.scoped, Effect.provide(audioLayer(ctx)))
+  })
 
-  it.effect("wires source to gain to destination with the given options", () =>
-    Effect.gen(function* () {
-      const ctx = makeFakeContext()
-      yield* run(
-        play(sound, { volume: 0.5, rate: 2, loop: true }).pipe(
-          Effect.tap(() =>
-            Effect.sync(() => {
-              const [source] = ctx.sources
-              const [gain] = ctx.gains
-              assert.strictEqual(source?.buffer, buffer)
-              assert.isTrue(source?.loop)
-              assert.strictEqual(source?.playbackRate.value, 2)
-              assert.strictEqual(gain?.gain.value, 0.5)
-              assert.strictEqual(source?.starts, 1)
-            })
-          )
-        ),
-        ctx
-      )
-    })
-  )
-
-  it.effect("uses unity gain and normal rate by default", () =>
-    Effect.gen(function* () {
-      const ctx = makeFakeContext()
-      yield* run(play(sound), ctx)
+  it.effect("uses unity gain and normal rate by default", () => {
+    const ctx = makeFakeContext()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.play(sound).pipe(Effect.scoped)
       assert.strictEqual(ctx.gains[0]?.gain.value, 1)
       assert.strictEqual(ctx.sources[0]?.playbackRate.value, 1)
       assert.isFalse(ctx.sources[0]?.loop)
-    })
-  )
+    }).pipe(Effect.provide(audioLayer(ctx)))
+  })
 
-  it.effect("stops and disconnects every node when the scope closes", () =>
-    Effect.gen(function* () {
-      const ctx = makeFakeContext()
-      yield* run(play(sound), ctx)
+  it.effect("stops and disconnects every node when the scope closes", () => {
+    const ctx = makeFakeContext()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.play(sound).pipe(Effect.scoped)
       assert.strictEqual(ctx.sources[0]?.stops, 1)
       assert.strictEqual(ctx.sources[0]?.disconnects, 1)
       assert.strictEqual(ctx.gains[0]?.disconnects, 1)
-    })
-  )
+    }).pipe(Effect.provide(audioLayer(ctx)))
+  })
 
-  it.effect("tolerates a source that throws when stopped twice", () =>
-    Effect.gen(function* () {
-      const ctx = makeFakeContext()
-      yield* run(
-        play(sound).pipe(
-          Effect.tap(() =>
-            Effect.sync(() => {
-              const source = ctx.sources[0]
-              if (source) {
-                source.stop = () => {
-                  throw new Error("InvalidStateError")
-                }
+  it.effect("tolerates a source that throws when stopped twice", () => {
+    const ctx = makeFakeContext()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.play(sound).pipe(
+        Effect.tap(() =>
+          Effect.sync(() => {
+            const source = ctx.sources[0]
+            if (source) {
+              source.stop = () => {
+                throw new Error("InvalidStateError")
               }
-            })
-          )
+            }
+          })
         ),
-        ctx
+        Effect.scoped
       )
       assert.strictEqual(ctx.sources[0]?.disconnects, 1)
-    })
-  )
+    }).pipe(Effect.provide(audioLayer(ctx)))
+  })
 
-  it.effect("ended completes when the engine reports the end of playback", () =>
-    Effect.gen(function* () {
-      const ctx = makeFakeContext()
-      yield* run(
-        Effect.gen(function* () {
-          const voice = yield* play(sound)
-          const waiting = yield* Effect.forkChild(voice.ended)
-          ctx.sources[0]?.end()
-          yield* Fiber.join(waiting)
-        }),
-        ctx
-      )
-    })
-  )
+  it.effect("ended completes when the engine reports the end of playback", () => {
+    const ctx = makeFakeContext()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const voice = yield* audio.play(sound)
+      const waiting = yield* Effect.forkChild(voice.ended)
+      ctx.sources[0]?.end()
+      yield* Fiber.join(waiting)
+    }).pipe(Effect.scoped, Effect.provide(audioLayer(ctx)))
+  })
 
   it.effect("ended also completes when the scope closes first", () =>
     Effect.gen(function* () {
-      const ctx = makeFakeContext()
-      const voice = yield* run(play(sound), ctx)
+      const audio = yield* Audio
+      const voice = yield* audio.play(sound).pipe(Effect.scoped)
       yield* voice.ended
-    })
+    }).pipe(Effect.provide(audioLayer(makeFakeContext())))
   )
 
-  it.effect("stop stops the source", () =>
-    Effect.gen(function* () {
-      const ctx = makeFakeContext()
-      yield* run(
-        Effect.gen(function* () {
-          const voice = yield* play(sound)
-          yield* voice.stop
-          assert.strictEqual(ctx.sources[0]?.stops, 1)
-        }),
-        ctx
-      )
-    })
-  )
+  it.effect("stop stops the source", () => {
+    const ctx = makeFakeContext()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const voice = yield* audio.play(sound)
+      yield* voice.stop
+      assert.strictEqual(ctx.sources[0]?.stops, 1)
+    }).pipe(Effect.scoped, Effect.provide(audioLayer(ctx)))
+  })
 
-  it.effect("fadeTo schedules a linear ramp from the current gain", () =>
-    Effect.gen(function* () {
-      const ctx = makeFakeContext()
-      ctx.currentTime = 10
-      yield* run(
-        Effect.gen(function* () {
-          const voice = yield* play(sound, { volume: 0.8 })
-          yield* voice.fadeTo(0, Duration.seconds(2))
-        }),
-        ctx
-      )
+  it.effect("fadeTo schedules a linear ramp from the current gain", () => {
+    const ctx = makeFakeContext()
+    ctx.currentTime = 10
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const voice = yield* audio.play(sound, { volume: 0.8 })
+      yield* voice.fadeTo(0, Duration.seconds(2))
       assert.deepStrictEqual(ctx.gains[0]?.gain.calls, [
         { kind: "set", value: 0.8, time: 10 },
         { kind: "ramp", value: 0, time: 12 }
       ])
-    })
-  )
+    }).pipe(Effect.scoped, Effect.provide(audioLayer(ctx)))
+  })
 })

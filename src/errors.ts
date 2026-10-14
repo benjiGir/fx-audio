@@ -1,10 +1,29 @@
-import * as Data from "effect/Data"
+import * as Schema from "effect/Schema"
 
-export type LoadFailure = "network" | "decode" | "unsupported-format" | "timeout"
+/** The request failed, or the server answered with an error status. */
+export class NetworkFailure extends Schema.TaggedError<NetworkFailure>()("NetworkFailure", {
+  status: Schema.optionalKey(Schema.Int),
+  cause: Schema.optionalKey(Schema.Defect())
+}) {}
 
-/** Every failure of loading a sound, typed in the Effect error channel. */
-export class LoadError extends Data.TaggedError("LoadError")<{
-  readonly reason: LoadFailure
-  readonly source: string
-  readonly cause?: unknown
-}> {}
+/** The bytes are not valid audio for the decoder. */
+export class DecodeFailure extends Schema.TaggedError<DecodeFailure>()("DecodeFailure", {
+  cause: Schema.Defect()
+}) {}
+
+/** The decoder does not support this codec or container. */
+export class UnsupportedFormat extends Schema.TaggedError<UnsupportedFormat>()(
+  "UnsupportedFormat",
+  {
+    cause: Schema.Defect()
+  }
+) {}
+
+/**
+ * Every failure of loading a sound. The `reason` is itself a tagged error, so
+ * callers can recover with `Effect.catchReason("LoadError", "NetworkFailure", ...)`.
+ */
+export class LoadError extends Schema.TaggedError<LoadError>()("LoadError", {
+  source: Schema.String,
+  reason: Schema.Union([NetworkFailure, DecodeFailure, UnsupportedFormat])
+}) {}

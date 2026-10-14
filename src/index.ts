@@ -1,4 +1,3 @@
-export { BrowserLive } from "./browser.ts"
 export type {
   AudioContextLike,
   AudioNodeLike,
@@ -8,6 +7,5 @@ export type {
 } from "./context.ts"
 export { AudioContextService } from "./context.ts"
 export type { PlayOptions, Sound, Voice } from "./core.ts"
-export { decode, load, play } from "./core.ts"
-export type { LoadFailure } from "./errors.ts"
-export { LoadError } from "./errors.ts"
+export { Audio } from "./core.ts"
+export { DecodeFailure, LoadError, NetworkFailure, UnsupportedFormat } from "./errors.ts"

@@ -1,7 +1,8 @@
+import { assert, describe, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
-import { assert, describe, it } from "vitest"
-import { decode, play } from "../src/index.ts"
-import { NodeLive } from "../src/node.ts"
+import * as Layer from "effect/Layer"
+import { Audio } from "../src/index.ts"
+import { layerNode } from "../src/node.ts"
 
 /** Mono 16-bit PCM WAV of a 440 Hz tone, built in memory. */
 const makeWav = (seconds: number, sampleRate = 8000): ArrayBuffer => {
@@ -33,24 +34,25 @@ const makeWav = (seconds: number, sampleRate = 8000): ArrayBuffer => {
   return view.buffer as ArrayBuffer
 }
 
-describe("NodeLive (real engine, no sound card)", () => {
-  it("decodes a WAV and plays it to the end", async () => {
-    const program = Effect.gen(function* () {
-      const sound = yield* decode(makeWav(0.1), "tone.wav")
-      assert.closeTo(sound.buffer.duration, 0.1, 0.001)
-      const voice = yield* play(sound, { volume: 0.5 })
-      yield* voice.ended
-    }).pipe(Effect.scoped, Effect.provide(NodeLive({ silent: true })))
-    await Effect.runPromise(program)
-  })
+const nodeAudio = Audio.layerNoDeps.pipe(Layer.provide(layerNode({ silent: true })))
 
-  it("reports undecodable bytes as a typed decode error", async () => {
-    const program = decode(new ArrayBuffer(64), "garbage.bin").pipe(
-      Effect.flip,
-      Effect.provide(NodeLive({ silent: true }))
-    )
-    const error = await Effect.runPromise(program)
-    assert.strictEqual(error._tag, "LoadError")
-    assert.include(["decode", "unsupported-format"], error.reason)
-  })
+describe("layerNode (real engine, no sound card)", () => {
+  it.live("decodes a WAV and plays it to the end", () =>
+    Effect.gen(function* () {
+      const audio = yield* Audio
+      const sound = yield* audio.decode(makeWav(0.1), "tone.wav")
+      assert.closeTo(sound.buffer.duration, 0.1, 0.001)
+      const voice = yield* audio.play(sound, { volume: 0.5 })
+      yield* voice.ended
+    }).pipe(Effect.scoped, Effect.provide(nodeAudio))
+  )
+
+  it.live("reports undecodable bytes as a typed load error", () =>
+    Effect.gen(function* () {
+      const audio = yield* Audio
+      const error = yield* Effect.flip(audio.decode(new ArrayBuffer(64), "garbage.bin"))
+      assert.strictEqual(error._tag, "LoadError")
+      assert.include(["DecodeFailure", "UnsupportedFormat"], error.reason._tag)
+    }).pipe(Effect.provide(nodeAudio))
+  )
 })

@@ -1,11 +1,11 @@
 import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
-import type * as Layer from "effect/Layer"
+import * as Layer from "effect/Layer"
 import * as ManagedRuntime from "effect/ManagedRuntime"
 import * as Scope from "effect/Scope"
-import type { AudioContextService } from "./context.ts"
+import { AudioContextService } from "./context.ts"
 import type { PlayOptions, Sound, Voice } from "./core.ts"
-import { load as loadEffect, play as playEffect } from "./core.ts"
+import { Audio } from "./core.ts"
 
 /** Promise facade for users who do not use Effect. Same engine, no Effect types. */
 export interface PromiseVoice {
@@ -20,23 +20,33 @@ export interface PromiseAudio {
   dispose(): Promise<void>
 }
 
-export const createAudio = (layer: Layer.Layer<AudioContextService>): PromiseAudio => {
-  const runtime = ManagedRuntime.make(layer)
-  const scope = Effect.runSync(Scope.make())
+/** Build the facade on a platform layer. Defaults to the browser audio context. */
+export const createAudio = (
+  platform: Layer.Layer<AudioContextService> = AudioContextService.layerBrowser
+): PromiseAudio => {
+  const runtime = ManagedRuntime.make(Audio.layerNoDeps.pipe(Layer.provide(platform)))
+  const scope = runtime.runSync(Scope.make())
   const wrap = (voice: Voice): PromiseVoice => ({
-    ended: Effect.runPromise(voice.ended),
-    stop: () => Effect.runSync(voice.stop),
-    fadeTo: (volume, seconds) => Effect.runSync(voice.fadeTo(volume, `${seconds} seconds`))
+    ended: runtime.runPromise(voice.ended),
+    stop: () => runtime.runSync(voice.stop),
+    fadeTo: (volume, seconds) => runtime.runSync(voice.fadeTo(volume, `${seconds} seconds`))
   })
   return {
     load: (url, signal) =>
-      runtime.runPromise(loadEffect(url), signal === undefined ? undefined : { signal }),
+      runtime.runPromise(
+        Audio.use((audio) => audio.load(url)),
+        signal === undefined ? undefined : { signal }
+      ),
     play: (sound, options) =>
       wrap(
-        runtime.runSync(playEffect(sound, options).pipe(Effect.provideService(Scope.Scope, scope)))
+        runtime.runSync(
+          Audio.use((audio) => audio.play(sound, options)).pipe(
+            Effect.provideService(Scope.Scope, scope)
+          )
+        )
       ),
     dispose: async () => {
-      await Effect.runPromise(Scope.close(scope, Exit.void))
+      await runtime.runPromise(Scope.close(scope, Exit.void))
       await runtime.dispose()
     }
   }
