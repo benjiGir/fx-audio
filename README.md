@@ -146,6 +146,7 @@ pnpm lint
 pnpm typecheck
 pnpm coverage     # unit tests, coverage thresholds: 95%
 pnpm test:browser # real browsers through Playwright (all three engines by default)
+pnpm api          # public API against the reports committed in api/ (pnpm api:update after a deliberate change)
 pnpm mutation     # mutation testing with Stryker, break threshold: 80% (about 12 minutes)
 pnpm build
 pnpm check:package
@@ -159,6 +160,14 @@ Mutation testing changes the source on purpose (flips a condition, drops a call,
 and checks that a unit test fails each time. A mutant that survives is behaviour no test pins down.
 The HTML report is written to `reports/mutation/index.html`. Vitest is pinned to 4.1.x because
 Stryker's Vitest runner does not support Vitest 5 yet.
+
+## Frozen API
+
+The public surface of every entry point (`fx-audio`, `fx-audio/promise`, `fx-audio/node`,
+`fx-audio/testing`) is written to `api/*.api.md` by API Extractor, and CI fails when the built
+declarations no longer match. A pull request that changes a signature has to update those
+files, so the change shows up in review. `test/api.test.ts` pins the signatures users write
+code against with type tests, checked by `pnpm typecheck`.
 
 ## License
 

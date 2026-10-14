@@ -40,7 +40,9 @@
     "coverage": "vitest run --project unit --coverage",
     "check:package": "publint && attw --pack . --profile esm-only",
     "test:browser": "vitest run --project \"browser-*\"",
-    "mutation": "stryker run"
+    "mutation": "stryker run",
+    "api": "pnpm build && node scripts/api-report.mjs",
+    "api:update": "pnpm build && node scripts/api-report.mjs --update"
   },
   "peerDependencies": {
     "effect": "^4.0.4",
@@ -55,6 +57,7 @@
     "@arethetypeswrong/cli": "0.18.5",
     "@biomejs/biome": "2.5.15",
     "@effect/vitest": "4.0.4",
+    "@microsoft/api-extractor": "7.59.4",
     "@stryker-mutator/core": "10.0.0",
     "@stryker-mutator/typescript-checker": "10.0.0",
     "@stryker-mutator/vitest-runner": "10.0.0",
