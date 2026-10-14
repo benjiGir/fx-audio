@@ -54,17 +54,23 @@ export interface PannerNodeLike extends AudioNodeLike {
   coneOuterGain: number
 }
 
-/** The one listener of a context: where the sound is heard from. */
+/**
+ * The one listener of a context: where the sound is heard from. Engines that have not
+ * adopted the `AudioParam` form (Firefox today) only offer the older `setPosition` and
+ * `setOrientation` methods, so the core uses whichever it finds.
+ */
 export interface AudioListenerLike {
-  readonly positionX: AudioParamLike
-  readonly positionY: AudioParamLike
-  readonly positionZ: AudioParamLike
-  readonly forwardX: AudioParamLike
-  readonly forwardY: AudioParamLike
-  readonly forwardZ: AudioParamLike
-  readonly upX: AudioParamLike
-  readonly upY: AudioParamLike
-  readonly upZ: AudioParamLike
+  readonly positionX?: AudioParamLike
+  readonly positionY?: AudioParamLike
+  readonly positionZ?: AudioParamLike
+  readonly forwardX?: AudioParamLike
+  readonly forwardY?: AudioParamLike
+  readonly forwardZ?: AudioParamLike
+  readonly upX?: AudioParamLike
+  readonly upY?: AudioParamLike
+  readonly upZ?: AudioParamLike
+  setPosition?(x: number, y: number, z: number): void
+  setOrientation?(x: number, y: number, z: number, xUp: number, yUp: number, zUp: number): void
 }
 
 export interface AudioContextLike {

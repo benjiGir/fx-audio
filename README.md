@@ -85,6 +85,7 @@ yield* voice.setPan(1)
 Only `position` is required; every other attribute keeps the Web Audio default (equal-power panning, inverse distance model, reference distance 1, rolloff 1, omnidirectional source).
 `voice.setPosition(position)` moves the voice afterwards, also one that started without `spatial`. `audio.listener` moves the listener, which starts at the origin facing -z with +y up.
 Positions are unitless: scale them as you like and tune `refDistance` to match.
+Firefox does not expose the listener as `AudioParam`s yet, so the listener falls back to the older `setPosition` and `setOrientation` methods there.
 
 ```ts
 const voice = yield* audio.play(sound, {

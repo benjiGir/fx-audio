@@ -8,7 +8,7 @@ import {
   Vector3
 } from "../src/index.ts"
 import { createAudio } from "../src/promise.ts"
-import { FakeAudioContextLive, makeFakeContext } from "../src/testing.ts"
+import { FakeAudioContextLive, makeFakeContext, makeFakeListener } from "../src/testing.ts"
 import { gainAt, voiceGains } from "./helpers/graph.ts"
 
 const buffer = { duration: 1 } as AudioBuffer
@@ -18,8 +18,9 @@ afterEach(() => {
 })
 
 const setup = () => {
-  const ctx = makeFakeContext({ decodeAudioData: () => Promise.resolve(buffer) })
-  return { ctx, audio: createAudio(FakeAudioContextLive(ctx)) }
+  const listener = makeFakeListener()
+  const ctx = makeFakeContext({ decodeAudioData: () => Promise.resolve(buffer), listener })
+  return { ctx, listener, audio: createAudio(FakeAudioContextLive(ctx)) }
 }
 
 describe("promise facade", () => {
@@ -91,14 +92,14 @@ describe("promise facade", () => {
   })
 
   it("moves the listener", async () => {
-    const { ctx, audio } = setup()
+    const { listener, audio } = setup()
     audio.listener.setPosition(new Vector3({ x: 7, y: 0, z: 0 }))
     audio.listener.setOrientation(
       new Vector3({ x: 0, y: 0, z: 1 }),
       new Vector3({ x: 0, y: 1, z: 0 })
     )
-    assert.strictEqual(ctx.listener.positionX.value, 7)
-    assert.strictEqual(ctx.listener.forwardZ.value, 1)
+    assert.strictEqual(listener.positionX.value, 7)
+    assert.strictEqual(listener.forwardZ.value, 1)
     await audio.dispose()
   })
 

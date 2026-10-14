@@ -15,7 +15,12 @@ import {
   Vector3
 } from "../src/index.ts"
 import type { FakeContext } from "../src/testing.ts"
-import { FakeAudioContextLive, makeFakeContext } from "../src/testing.ts"
+import {
+  FakeAudioContextLive,
+  makeFakeContext,
+  makeFakeListener,
+  makeLegacyListener
+} from "../src/testing.ts"
 import { gainAt, pannerAt, spatialAt, voiceGains } from "./helpers/graph.ts"
 
 const buffer = { duration: 1 } as AudioBuffer
@@ -781,54 +786,115 @@ describe("3D position", () => {
 })
 
 describe("listener", () => {
-  it.effect("setPosition places the listener", () => {
-    const ctx = makeFakeContext()
-    return Effect.gen(function* () {
-      const audio = yield* Audio
-      yield* audio.listener.setPosition(new Vector3({ x: 1, y: 2, z: 3 }))
-      const { listener } = ctx
-      assert.deepStrictEqual(
-        [listener.positionX.value, listener.positionY.value, listener.positionZ.value],
-        [1, 2, 3]
-      )
-    }).pipe(Effect.provide(audioLayer(ctx)))
+  const vec = (x: number, y: number, z: number) => new Vector3({ x, y, z })
+  // A plain object: building a `Vector3` with a NaN coordinate would already throw.
+  const bad = { x: Number.NaN, y: 0, z: 0 }
+
+  describe("with AudioParams", () => {
+    const setup = () => {
+      const listener = makeFakeListener()
+      return { listener, layer: audioLayer(makeFakeContext({ listener })) }
+    }
+
+    it.effect("setPosition places the listener", () => {
+      const { listener, layer } = setup()
+      return Effect.gen(function* () {
+        const audio = yield* Audio
+        yield* audio.listener.setPosition(vec(1, 2, 3))
+        assert.deepStrictEqual(
+          [listener.positionX.value, listener.positionY.value, listener.positionZ.value],
+          [1, 2, 3]
+        )
+      }).pipe(Effect.provide(layer))
+    })
+
+    it.effect("setOrientation sets the facing and up directions", () => {
+      const { listener, layer } = setup()
+      return Effect.gen(function* () {
+        const audio = yield* Audio
+        yield* audio.listener.setOrientation(vec(1, 0, 0), vec(0, 0, 1))
+        assert.deepStrictEqual(
+          [listener.forwardX.value, listener.forwardY.value, listener.forwardZ.value],
+          [1, 0, 0]
+        )
+        assert.deepStrictEqual(
+          [listener.upX.value, listener.upY.value, listener.upZ.value],
+          [0, 0, 1]
+        )
+      }).pipe(Effect.provide(layer))
+    })
+
+    it.effect("dies on a coordinate that is not finite and changes nothing", () => {
+      const { listener, layer } = setup()
+      return Effect.gen(function* () {
+        const audio = yield* Audio
+        const exits = yield* Effect.all([
+          Effect.exit(audio.listener.setPosition(bad)),
+          Effect.exit(audio.listener.setOrientation(vec(1, 1, 1), bad)),
+          Effect.exit(audio.listener.setOrientation(bad, vec(1, 1, 1)))
+        ])
+        for (const exit of exits) assert.isTrue(exit._tag === "Failure")
+        for (const param of [listener.positionX, listener.forwardX, listener.upX]) {
+          assert.strictEqual(param.value, 1)
+        }
+      }).pipe(Effect.provide(layer))
+    })
   })
 
-  it.effect("setOrientation sets the facing and up directions", () => {
-    const ctx = makeFakeContext()
-    return Effect.gen(function* () {
-      const audio = yield* Audio
-      yield* audio.listener.setOrientation(
-        new Vector3({ x: 1, y: 0, z: 0 }),
-        new Vector3({ x: 0, y: 0, z: 1 })
-      )
-      const { listener } = ctx
-      assert.deepStrictEqual(
-        [listener.forwardX.value, listener.forwardY.value, listener.forwardZ.value],
-        [1, 0, 0]
-      )
-      assert.deepStrictEqual(
-        [listener.upX.value, listener.upY.value, listener.upZ.value],
-        [0, 0, 1]
-      )
-    }).pipe(Effect.provide(audioLayer(ctx)))
+  describe("with only the older methods", () => {
+    const setup = () => {
+      const listener = makeLegacyListener()
+      return { listener, layer: audioLayer(makeFakeContext({ listener })) }
+    }
+
+    it.effect("setPosition calls setPosition", () => {
+      const { listener, layer } = setup()
+      return Effect.gen(function* () {
+        const audio = yield* Audio
+        yield* audio.listener.setPosition(vec(1, 2, 3))
+        assert.deepStrictEqual(listener.calls, [{ method: "setPosition", args: [1, 2, 3] }])
+      }).pipe(Effect.provide(layer))
+    })
+
+    it.effect("setOrientation passes the facing then the up direction", () => {
+      const { listener, layer } = setup()
+      return Effect.gen(function* () {
+        const audio = yield* Audio
+        yield* audio.listener.setOrientation(vec(1, 0, 0), vec(0, 0, 1))
+        assert.deepStrictEqual(listener.calls, [
+          { method: "setOrientation", args: [1, 0, 0, 0, 0, 1] }
+        ])
+      }).pipe(Effect.provide(layer))
+    })
+
+    it.effect("dies on a coordinate that is not finite and calls nothing", () => {
+      const { listener, layer } = setup()
+      return Effect.gen(function* () {
+        const audio = yield* Audio
+        const exits = yield* Effect.all([
+          Effect.exit(audio.listener.setPosition(bad)),
+          Effect.exit(audio.listener.setOrientation(bad, vec(1, 1, 1)))
+        ])
+        for (const exit of exits) assert.isTrue(exit._tag === "Failure")
+        assert.deepStrictEqual(listener.calls, [])
+      }).pipe(Effect.provide(layer))
+    })
   })
 
-  it.effect("dies on a coordinate that is not finite and changes nothing", () => {
-    const ctx = makeFakeContext()
-    return Effect.gen(function* () {
-      const audio = yield* Audio
-      // A plain object: building a `Vector3` with a NaN coordinate would already throw.
-      const bad = { x: Number.NaN, y: 0, z: 0 }
-      const good = new Vector3({ x: 1, y: 1, z: 1 })
-      const exits = yield* Effect.all([
-        Effect.exit(audio.listener.setPosition(bad)),
-        Effect.exit(audio.listener.setOrientation(good, bad)),
-        Effect.exit(audio.listener.setOrientation(bad, good))
-      ])
-      for (const exit of exits) assert.isTrue(exit._tag === "Failure")
-      assert.strictEqual(ctx.listener.positionX.value, 1)
-      assert.strictEqual(ctx.listener.forwardX.value, 1)
-    }).pipe(Effect.provide(audioLayer(ctx)))
+  describe("on a context that cannot move its listener", () => {
+    it.effect("dies with a clear message instead of doing nothing", () => {
+      const layer = audioLayer(makeFakeContext({ listener: {} }))
+      return Effect.gen(function* () {
+        const audio = yield* Audio
+        const exits = yield* Effect.all([
+          Effect.exit(audio.listener.setPosition(vec(0, 0, 0))),
+          Effect.exit(audio.listener.setOrientation(vec(0, 0, -1), vec(0, 1, 0)))
+        ])
+        for (const exit of exits) {
+          assert.isTrue(exit._tag === "Failure")
+          assert.include(String(exit), "cannot move its listener")
+        }
+      }).pipe(Effect.provide(layer))
+    })
   })
 })

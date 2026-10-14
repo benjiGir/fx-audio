@@ -391,20 +391,42 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
     })
 
     const { listener } = ctx
+    const unsupported = () => {
+      throw new Error("this audio context cannot move its listener")
+    }
     const listenerService: Listener = {
       setPosition: (requested) =>
         Effect.sync(() => {
-          setVector(
-            [listener.positionX, listener.positionY, listener.positionZ],
-            decodeVector(requested)
-          )
+          const position = decodeVector(requested)
+          const { positionX, positionY, positionZ } = listener
+          if (positionX !== undefined && positionY !== undefined && positionZ !== undefined) {
+            setVector([positionX, positionY, positionZ], position)
+          } else if (listener.setPosition !== undefined) {
+            listener.setPosition(position.x, position.y, position.z)
+          } else {
+            unsupported()
+          }
         }),
       setOrientation: (forward, up) =>
         Effect.sync(() => {
           const facing = decodeVector(forward)
           const top = decodeVector(up)
-          setVector([listener.forwardX, listener.forwardY, listener.forwardZ], facing)
-          setVector([listener.upX, listener.upY, listener.upZ], top)
+          const { forwardX, forwardY, forwardZ, upX, upY, upZ } = listener
+          if (
+            forwardX !== undefined &&
+            forwardY !== undefined &&
+            forwardZ !== undefined &&
+            upX !== undefined &&
+            upY !== undefined &&
+            upZ !== undefined
+          ) {
+            setVector([forwardX, forwardY, forwardZ], facing)
+            setVector([upX, upY, upZ], top)
+          } else if (listener.setOrientation !== undefined) {
+            listener.setOrientation(facing.x, facing.y, facing.z, top.x, top.y, top.z)
+          } else {
+            unsupported()
+          }
         })
     }
 

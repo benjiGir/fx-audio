@@ -64,6 +64,7 @@ export interface FakeSpatialPanner extends PannerNodeLike {
   readonly connections: ReadonlyArray<AudioNodeLike>
 }
 
+/** A listener with `AudioParam`s, as in Chromium and WebKit. */
 export interface FakeListener extends AudioListenerLike {
   readonly positionX: FakeParam
   readonly positionY: FakeParam
@@ -76,6 +77,15 @@ export interface FakeListener extends AudioListenerLike {
   readonly upZ: FakeParam
 }
 
+/** A listener with only the older `setPosition` and `setOrientation` methods, as in Firefox. */
+export interface FakeLegacyListener extends AudioListenerLike {
+  /** Arguments of every call, in order. */
+  readonly calls: Array<{
+    readonly method: "setPosition" | "setOrientation"
+    readonly args: ReadonlyArray<number>
+  }>
+}
+
 /** Pure-JS audio context double: records nodes and calls, does no audio work. */
 export interface FakeContext extends AudioContextLike {
   readonly sources: ReadonlyArray<FakeSource>
@@ -83,13 +93,15 @@ export interface FakeContext extends AudioContextLike {
   readonly panners: ReadonlyArray<FakePanner>
   /** The 3D panners, in creation order. */
   readonly spatialPanners: ReadonlyArray<FakeSpatialPanner>
-  readonly listener: FakeListener
+  readonly listener: AudioListenerLike
   currentTime: number
 }
 
 export interface FakeContextOptions {
   /** Replace the decoder. By default every decode rejects. */
   readonly decodeAudioData?: (data: ArrayBuffer) => Promise<AudioBuffer>
+  /** Replace the listener, by default a `makeFakeListener()`. */
+  readonly listener?: AudioListenerLike
 }
 
 const makeParam = (): FakeParam => {
@@ -109,29 +121,43 @@ const makeParam = (): FakeParam => {
   }
 }
 
+export const makeFakeListener = (): FakeListener => ({
+  positionX: makeParam(),
+  positionY: makeParam(),
+  positionZ: makeParam(),
+  forwardX: makeParam(),
+  forwardY: makeParam(),
+  forwardZ: makeParam(),
+  upX: makeParam(),
+  upY: makeParam(),
+  upZ: makeParam()
+})
+
+export const makeLegacyListener = (): FakeLegacyListener => {
+  const calls: FakeLegacyListener["calls"] = []
+  return {
+    calls,
+    setPosition: (...args) => {
+      calls.push({ method: "setPosition", args })
+    },
+    setOrientation: (...args) => {
+      calls.push({ method: "setOrientation", args })
+    }
+  }
+}
+
 export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext => {
   const sources: Array<FakeSource> = []
   const gains: Array<FakeGain> = []
   const panners: Array<FakePanner> = []
   const spatialPanners: Array<FakeSpatialPanner> = []
-  const listener: FakeListener = {
-    positionX: makeParam(),
-    positionY: makeParam(),
-    positionZ: makeParam(),
-    forwardX: makeParam(),
-    forwardY: makeParam(),
-    forwardZ: makeParam(),
-    upX: makeParam(),
-    upY: makeParam(),
-    upZ: makeParam()
-  }
   const destination: AudioNodeLike = { connect: () => undefined, disconnect() {} }
   return {
     sources,
     gains,
     panners,
     spatialPanners,
-    listener,
+    listener: options.listener ?? makeFakeListener(),
     currentTime: 0,
     state: "running",
     destination,
