@@ -78,7 +78,7 @@ describe("promise facade", () => {
     const sound = new Sound({ buffer, source: "fx.wav" })
     const sheet = new SpriteSheet({
       sound,
-      segments: { hit: new SpriteSegment({ start: 0.5, duration: 1 }) }
+      segments: { hit: new SpriteSegment({ start: 500, duration: 1000 }) }
     })
 
     it("plays one segment and returns a usable voice", async () => {

@@ -239,8 +239,8 @@ describe("Audio.playSprite", () => {
   const sheet = new SpriteSheet({
     sound,
     segments: {
-      hit: new SpriteSegment({ start: 0.25, duration: 0.5 }),
-      engine: new SpriteSegment({ start: 1, duration: 2, loop: true })
+      hit: new SpriteSegment({ start: 250, duration: 500 }),
+      engine: new SpriteSegment({ start: 1000, duration: 2000, loop: true })
     }
   })
 

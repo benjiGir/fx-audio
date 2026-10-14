@@ -18,7 +18,7 @@ export class PlayOptions extends Schema.Class<PlayOptions>("fx-audio/PlayOptions
   loop: Schema.optionalKey(Schema.Boolean)
 }) {}
 
-/** A named slice of one sound. Times are in seconds, as in the Web Audio API. */
+/** A named slice of one sound. `start` and `duration` are in milliseconds, as in Howler. */
 export class SpriteSegment extends Schema.Class<SpriteSegment>("fx-audio/SpriteSegment")({
   start: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
   duration: Schema.Finite.check(Schema.isGreaterThan(0)),

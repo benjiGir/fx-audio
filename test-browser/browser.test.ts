@@ -125,7 +125,7 @@ describe("sprites on a real engine (offline render)", () => {
       const audio = yield* Audio
       const sound = yield* audio.decode(makeWav(1), "tone.wav")
       const voice = yield* audio.playSprite(
-        sheetOf(sound, new SpriteSegment({ start: 0.5, duration: 0.2 })),
+        sheetOf(sound, new SpriteSegment({ start: 500, duration: 200 })),
         "cut",
         { volume: 0.5 }
       )
@@ -146,7 +146,7 @@ describe("sprites on a real engine (offline render)", () => {
       const audio = yield* Audio
       const sound = yield* audio.decode(makeWav(1), "tone.wav")
       yield* audio.playSprite(
-        sheetOf(sound, new SpriteSegment({ start: 0.1, duration: 0.1, loop: true })),
+        sheetOf(sound, new SpriteSegment({ start: 100, duration: 100, loop: true })),
         "cut",
         { volume: 0.5 }
       )

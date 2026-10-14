@@ -25,7 +25,7 @@ Import Effect modules by subpath (`effect/Effect`), never from the `effect` barr
 ## Sprites
 
 A sprite sheet cuts one decoded sound into named segments, so a whole set of effects loads as one file.
-Times are in seconds.
+Times are in milliseconds, as in Howler.
 
 ```ts
 import { Audio, SpriteSegment, SpriteSheet } from "fx-audio"
@@ -33,8 +33,8 @@ import { Audio, SpriteSegment, SpriteSheet } from "fx-audio"
 const sheet = new SpriteSheet({
   sound,
   segments: {
-    hit: new SpriteSegment({ start: 0, duration: 0.4 }),
-    engine: new SpriteSegment({ start: 0.5, duration: 2, loop: true })
+    hit: new SpriteSegment({ start: 0, duration: 400 }),
+    engine: new SpriteSegment({ start: 500, duration: 2000, loop: true })
   }
 })
 

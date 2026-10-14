@@ -102,13 +102,18 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
           source.onended = () => Deferred.doneUnsafe(ended, Effect.void)
           if (segment === undefined) {
             source.start()
-          } else if (source.loop) {
-            // A looping source plays until stopped, so the segment bounds the loop instead.
-            source.loopStart = segment.start
-            source.loopEnd = segment.start + segment.duration
-            source.start(0, segment.start)
           } else {
-            source.start(0, segment.start, segment.duration)
+            // The Web Audio API counts in seconds, sprite segments in milliseconds.
+            const start = segment.start / 1000
+            const duration = segment.duration / 1000
+            if (source.loop) {
+              // A looping source plays until stopped, so the segment bounds the loop instead.
+              source.loopStart = start
+              source.loopEnd = start + duration
+              source.start(0, start)
+            } else {
+              source.start(0, start, duration)
+            }
           }
           return { source, gain }
         }),
