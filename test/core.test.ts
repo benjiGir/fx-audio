@@ -15,6 +15,7 @@ import {
 } from "../src/index.ts"
 import type { FakeContext } from "../src/testing.ts"
 import { FakeAudioContextLive, makeFakeContext } from "../src/testing.ts"
+import { gainAt, voiceGains } from "./helpers/graph.ts"
 
 const buffer = { duration: 1 } as AudioBuffer
 const sound = new Sound({ buffer, source: "test.wav" })
@@ -139,7 +140,7 @@ describe("Audio.play", () => {
       const audio = yield* Audio
       yield* audio.play(sound, { volume: 0.5, rate: 2, loop: true })
       const [source] = ctx.sources
-      const [gain] = ctx.gains
+      const [gain] = voiceGains(ctx)
       assert.strictEqual(source?.buffer, buffer)
       assert.isTrue(source?.loop)
       assert.strictEqual(source?.playbackRate.value, 2)
@@ -153,7 +154,7 @@ describe("Audio.play", () => {
     return Effect.gen(function* () {
       const audio = yield* Audio
       yield* audio.play(sound).pipe(Effect.scoped)
-      assert.strictEqual(ctx.gains[0]?.gain.value, 1)
+      assert.strictEqual(voiceGains(ctx)[0]?.gain.value, 1)
       assert.strictEqual(ctx.sources[0]?.playbackRate.value, 1)
       assert.isFalse(ctx.sources[0]?.loop)
     }).pipe(Effect.provide(audioLayer(ctx)))
@@ -166,7 +167,7 @@ describe("Audio.play", () => {
       yield* audio.play(sound).pipe(Effect.scoped)
       assert.strictEqual(ctx.sources[0]?.stops, 1)
       assert.strictEqual(ctx.sources[0]?.disconnects, 1)
-      assert.strictEqual(ctx.gains[0]?.disconnects, 1)
+      assert.strictEqual(voiceGains(ctx)[0]?.disconnects, 1)
     }).pipe(Effect.provide(audioLayer(ctx)))
   })
 
@@ -227,7 +228,7 @@ describe("Audio.play", () => {
       const audio = yield* Audio
       const voice = yield* audio.play(sound, { volume: 0.8 })
       yield* voice.fadeTo(0, Duration.seconds(2))
-      assert.deepStrictEqual(ctx.gains[0]?.gain.calls, [
+      assert.deepStrictEqual(voiceGains(ctx)[0]?.gain.calls, [
         { kind: "set", value: 0.8, time: 10 },
         { kind: "ramp", value: 0, time: 12 }
       ])
@@ -253,7 +254,7 @@ describe("Audio.playSprite", () => {
       assert.strictEqual(source?.buffer, buffer)
       assert.isFalse(source?.loop)
       assert.deepStrictEqual(source?.startCalls, [{ when: 0, offset: 0.25, duration: 0.5 }])
-      assert.strictEqual(ctx.gains[0]?.gain.value, 0.4)
+      assert.strictEqual(voiceGains(ctx)[0]?.gain.value, 0.4)
     }).pipe(Effect.scoped, Effect.provide(audioLayer(ctx)))
   })
 
@@ -291,7 +292,7 @@ describe("Audio.playSprite", () => {
       yield* voice.fadeTo(0, Duration.seconds(1))
       yield* voice.stop
       assert.strictEqual(ctx.sources[0]?.stops, 1)
-      assert.strictEqual(ctx.gains[0]?.gain.calls.at(-1)?.kind, "ramp")
+      assert.strictEqual(voiceGains(ctx)[0]?.gain.calls.at(-1)?.kind, "ramp")
     }).pipe(Effect.scoped, Effect.provide(audioLayer(ctx)))
   })
 
@@ -314,4 +315,205 @@ describe("Audio.playSprite", () => {
       assert.strictEqual(error._tag, "UnknownSprite")
     }).pipe(Effect.scoped, Effect.provide(audioLayer(makeFakeContext())))
   )
+})
+
+describe("Audio groups", () => {
+  const sheet = new SpriteSheet({
+    sound,
+    segments: { hit: new SpriteSegment({ start: 0, duration: 500 }) }
+  })
+  const setup = () => {
+    const ctx = makeFakeContext()
+    ctx.currentTime = 5
+    return { ctx, layer: audioLayer(ctx) }
+  }
+
+  it.effect("routes a plain play through the master group into the destination", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.play(sound)
+      const master = gainAt(ctx, 0)
+      assert.deepStrictEqual(master.connections, [ctx.destination])
+      assert.deepStrictEqual(gainAt(ctx, 1).connections, [master])
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("routes the voices of a group through the group into the master", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const group = yield* audio.group("music")
+      yield* group.play(sound)
+      yield* group.playSprite(sheet, "hit")
+      const groupGain = gainAt(ctx, 1)
+      assert.deepStrictEqual(groupGain.connections, [gainAt(ctx, 0)])
+      assert.deepStrictEqual(gainAt(ctx, 2).connections, [groupGain])
+      assert.deepStrictEqual(gainAt(ctx, 3).connections, [groupGain])
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("returns the same group for the same name and builds its gain once", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const first = yield* audio.group("music")
+      const again = yield* audio.group("music")
+      const other = yield* audio.group("sfx")
+      assert.strictEqual(again, first)
+      assert.notStrictEqual(other, first)
+      // The master's gain plus one per distinct name.
+      assert.strictEqual(ctx.gains.length, 3)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("builds one group when several fibers ask for the same name at once", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const groups = yield* Effect.all(
+        Array.from({ length: 20 }, () => audio.group("music")),
+        { concurrency: "unbounded" }
+      )
+      assert.isTrue(groups.every((group) => group === groups[0]))
+      assert.strictEqual(ctx.gains.length, 2)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("accepts any name, including ones that exist on Object.prototype", () => {
+    const { layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const first = yield* audio.group("toString")
+      assert.strictEqual(yield* audio.group("toString"), first)
+      assert.notStrictEqual(yield* audio.group(""), first)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("keeps a group alive after the scope that created it closes", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const group = yield* audio.group("music")
+      yield* Effect.scoped(group.play(sound))
+      assert.strictEqual(gainAt(ctx, 1).disconnects, 0)
+      // Still usable: the voice created now connects to the same gain.
+      yield* group.play(sound)
+      assert.deepStrictEqual(gainAt(ctx, 3).connections, [gainAt(ctx, 1)])
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("releases every group's gain and the master's with the layer", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const audio = yield* Audio
+          yield* audio.group("music")
+          yield* audio.group("sfx")
+        }).pipe(Effect.provide(layer))
+      )
+      assert.deepStrictEqual(
+        ctx.gains.map((gain) => gain.disconnects),
+        [1, 1, 1]
+      )
+    })
+  })
+
+  it.effect("setVolume replaces any scheduled change at the current time", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const group = yield* audio.group("music")
+      yield* group.setVolume(0.3)
+      assert.deepStrictEqual(ctx.gains[1]?.gain.calls, [
+        { kind: "cancel", value: Number.NaN, time: 5 },
+        { kind: "set", value: 0.3, time: 5 }
+      ])
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("mute silences the group and unmute restores the volume it had", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const group = yield* audio.group("music")
+      yield* group.setVolume(0.6)
+      yield* group.mute
+      yield* group.mute
+      assert.strictEqual(ctx.gains[1]?.gain.calls.at(-1)?.value, 0)
+      yield* group.unmute
+      assert.strictEqual(ctx.gains[1]?.gain.calls.at(-1)?.value, 0.6)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("a volume set while muted stays silent until unmute", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const group = yield* audio.group("music")
+      yield* group.mute
+      const before = ctx.gains[1]?.gain.calls.length
+      yield* group.setVolume(0.9)
+      assert.strictEqual(ctx.gains[1]?.gain.calls.length, before)
+      yield* group.unmute
+      assert.strictEqual(ctx.gains[1]?.gain.calls.at(-1)?.value, 0.9)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("fadeTo ramps linearly from the current gain, replacing an earlier fade", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const group = yield* audio.group("music")
+      yield* group.fadeTo(0, Duration.seconds(2))
+      assert.deepStrictEqual(ctx.gains[1]?.gain.calls, [
+        { kind: "cancel", value: Number.NaN, time: 5 },
+        { kind: "set", value: 1, time: 5 },
+        { kind: "ramp", value: 0, time: 7 }
+      ])
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("fadeTo while muted schedules nothing but changes the volume unmute restores", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const group = yield* audio.group("music")
+      yield* group.mute
+      const before = ctx.gains[1]?.gain.calls.length
+      yield* group.fadeTo(0.4, Duration.seconds(1))
+      assert.strictEqual(ctx.gains[1]?.gain.calls.length, before)
+      yield* group.unmute
+      assert.strictEqual(ctx.gains[1]?.gain.calls.at(-1)?.value, 0.4)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("dies on a negative or non-finite volume and leaves the gain alone", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const group = yield* audio.group("music")
+      const exits = yield* Effect.all([
+        Effect.exit(group.setVolume(-1)),
+        Effect.exit(group.setVolume(Number.NaN)),
+        Effect.exit(group.fadeTo(-0.5, Duration.seconds(1)))
+      ])
+      for (const exit of exits) assert.isTrue(exit._tag === "Failure")
+      assert.strictEqual(ctx.gains[1]?.gain.calls.length, 0)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("the master group controls everything, including other groups", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.master.setVolume(0.5)
+      yield* audio.master.mute
+      assert.deepStrictEqual(
+        ctx.gains[0]?.gain.calls.map((call) => call.value).filter((v) => !Number.isNaN(v)),
+        [0.5, 0]
+      )
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
 })

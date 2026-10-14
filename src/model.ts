@@ -5,6 +5,9 @@ import * as Schema from "effect/Schema"
 const isAudioBufferLike = (u: unknown): u is AudioBuffer =>
   Predicate.hasProperty(u, "duration") && Predicate.isNumber(u.duration)
 
+/** A gain: zero is silence, one is unchanged, above one amplifies. */
+export const Volume = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
+
 /** A decoded sound, ready to be played any number of times. */
 export class Sound extends Schema.Class<Sound>("fx-audio/Sound")({
   buffer: Schema.declare(isAudioBufferLike),
@@ -13,7 +16,7 @@ export class Sound extends Schema.Class<Sound>("fx-audio/Sound")({
 
 /** Options of one `play` call. Decode untrusted input with `Schema.decodeUnknownSync(PlayOptions)`. */
 export class PlayOptions extends Schema.Class<PlayOptions>("fx-audio/PlayOptions")({
-  volume: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+  volume: Schema.optionalKey(Volume),
   rate: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThan(0))),
   loop: Schema.optionalKey(Schema.Boolean)
 }) {}

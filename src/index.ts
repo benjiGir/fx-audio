@@ -6,7 +6,7 @@ export type {
   SourceNodeLike
 } from "./context.ts"
 export { AudioContextService, BrowserAudioContextLive } from "./context.ts"
-export type { Voice } from "./core.ts"
+export type { Group, Voice } from "./core.ts"
 export { Audio, AudioBrowserLive, AudioLive } from "./core.ts"
 export {
   DecodeFailure,

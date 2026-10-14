@@ -11,7 +11,7 @@ import { AudioContextService } from "./context.ts"
 /** A param that records every scheduled change. */
 export interface FakeParam extends AudioParamLike {
   readonly calls: Array<{
-    readonly kind: "set" | "ramp"
+    readonly kind: "set" | "ramp" | "cancel"
     readonly value: number
     readonly time: number
   }>
@@ -23,6 +23,8 @@ export interface FakeSource extends SourceNodeLike {
   readonly starts: number
   readonly stops: number
   readonly disconnects: number
+  /** Every node this source was connected to, in order. */
+  readonly connections: ReadonlyArray<AudioNodeLike>
   /** Arguments of every `start` call, in order. */
   readonly startCalls: ReadonlyArray<{
     readonly when: number | undefined
@@ -36,6 +38,8 @@ export interface FakeSource extends SourceNodeLike {
 export interface FakeGain extends GainNodeLike {
   readonly gain: FakeParam
   readonly disconnects: number
+  /** Every node this gain was connected to, in order. */
+  readonly connections: ReadonlyArray<AudioNodeLike>
 }
 
 /** Pure-JS audio context double: records nodes and calls, does no audio work. */
@@ -60,6 +64,9 @@ const makeParam = (): FakeParam => {
     },
     linearRampToValueAtTime(value, time) {
       calls.push({ kind: "ramp", value, time })
+    },
+    cancelScheduledValues(time) {
+      calls.push({ kind: "cancel", value: Number.NaN, time })
     }
   }
 }
@@ -76,6 +83,7 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
     destination,
     createBufferSource() {
       const startCalls: Array<FakeSource["startCalls"][number]> = []
+      const connections: Array<AudioNodeLike> = []
       const source: FakeSource & { starts: number; stops: number; disconnects: number } = {
         buffer: null,
         playbackRate: makeParam(),
@@ -84,10 +92,13 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
         loopEnd: 0,
         onended: null,
         startCalls,
+        connections,
         starts: 0,
         stops: 0,
         disconnects: 0,
-        connect: () => undefined,
+        connect(destination) {
+          connections.push(destination)
+        },
         disconnect() {
           source.disconnects++
         },
@@ -106,10 +117,14 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
       return source
     },
     createGain() {
+      const connections: Array<AudioNodeLike> = []
       const gain: FakeGain & { disconnects: number } = {
         gain: makeParam(),
         disconnects: 0,
-        connect: () => undefined,
+        connections,
+        connect(destination) {
+          connections.push(destination)
+        },
         disconnect() {
           gain.disconnects++
         }

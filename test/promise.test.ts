@@ -2,6 +2,7 @@ import { afterEach, assert, describe, it, vi } from "vitest"
 import { LoadError, Sound, SpriteSegment, SpriteSheet, UnknownSprite } from "../src/index.ts"
 import { createAudio } from "../src/promise.ts"
 import { FakeAudioContextLive, makeFakeContext } from "../src/testing.ts"
+import { gainAt, voiceGains } from "./helpers/graph.ts"
 
 const buffer = { duration: 1 } as AudioBuffer
 
@@ -50,7 +51,11 @@ describe("promise facade", () => {
     const { ctx, audio } = setup()
     const voice = audio.play(new Sound({ buffer, source: "a.wav" }), { volume: 0.5 })
     voice.fadeTo(0, 1.5)
-    assert.deepStrictEqual(ctx.gains[0]?.gain.calls.at(-1), { kind: "ramp", value: 0, time: 1.5 })
+    assert.deepStrictEqual(voiceGains(ctx)[0]?.gain.calls.at(-1), {
+      kind: "ramp",
+      value: 0,
+      time: 1.5
+    })
     voice.stop()
     assert.strictEqual(ctx.sources[0]?.stops, 1)
     ctx.sources[0]?.end()
@@ -85,7 +90,7 @@ describe("promise facade", () => {
       const { ctx, audio } = setup()
       const voice = audio.playSprite(sheet, "hit", { volume: 0.3 })
       assert.deepStrictEqual(ctx.sources[0]?.startCalls, [{ when: 0, offset: 0.5, duration: 1 }])
-      assert.strictEqual(ctx.gains[0]?.gain.value, 0.3)
+      assert.strictEqual(voiceGains(ctx)[0]?.gain.value, 0.3)
       voice.stop()
       ctx.sources[0]?.end()
       await voice.ended
@@ -105,5 +110,89 @@ describe("promise facade", () => {
       assert.strictEqual(ctx.sources.length, 0)
       await audio.dispose()
     })
+  })
+})
+
+describe("promise facade groups", () => {
+  const sound = new Sound({ buffer, source: "a.wav" })
+
+  it("plays through a group routed into the master", async () => {
+    const { ctx, audio } = setup()
+    const group = audio.group("music")
+    group.play(sound)
+    assert.deepStrictEqual(gainAt(ctx, 1).connections, [gainAt(ctx, 0)])
+    assert.deepStrictEqual(gainAt(ctx, 2).connections, [gainAt(ctx, 1)])
+    await audio.dispose()
+  })
+
+  it("returns the same group object for the same name", async () => {
+    const { ctx, audio } = setup()
+    const group = audio.group("music")
+    assert.strictEqual(audio.group("music"), group)
+    assert.notStrictEqual(audio.group("sfx"), group)
+    assert.strictEqual(ctx.gains.length, 3)
+    await audio.dispose()
+  })
+
+  it("sets the volume, fades, mutes and unmutes a group", async () => {
+    const { ctx, audio } = setup()
+    ctx.currentTime = 2
+    const group = audio.group("music")
+    group.setVolume(0.5)
+    assert.deepStrictEqual(ctx.gains[1]?.gain.calls.at(-1), { kind: "set", value: 0.5, time: 2 })
+    group.fadeTo(0, 1.5)
+    assert.deepStrictEqual(ctx.gains[1]?.gain.calls.at(-1), { kind: "ramp", value: 0, time: 3.5 })
+    group.mute()
+    assert.strictEqual(ctx.gains[1]?.gain.calls.at(-1)?.value, 0)
+    group.unmute()
+    assert.strictEqual(ctx.gains[1]?.gain.calls.at(-1)?.value, 0)
+    group.setVolume(0.8)
+    assert.strictEqual(ctx.gains[1]?.gain.calls.at(-1)?.value, 0.8)
+    await audio.dispose()
+  })
+
+  it("throws on an invalid volume", async () => {
+    const { audio } = setup()
+    const group = audio.group("music")
+    assert.throws(() => group.setVolume(-1))
+    assert.throws(() => group.fadeTo(Number.NaN, 1))
+    await audio.dispose()
+  })
+
+  it("plays a sprite on a group and on the master", async () => {
+    const { ctx, audio } = setup()
+    const sheet = new SpriteSheet({
+      sound,
+      segments: { hit: new SpriteSegment({ start: 100, duration: 200 }) }
+    })
+    audio.group("music").playSprite(sheet, "hit")
+    audio.master.playSprite(sheet, "hit")
+    assert.strictEqual(ctx.sources.length, 2)
+    assert.throws(() => audio.master.playSprite(sheet, "nope"), UnknownSprite)
+    await audio.dispose()
+  })
+
+  it("controls the master, which top-level play also goes through", async () => {
+    const { ctx, audio } = setup()
+    audio.master.setVolume(0.2)
+    audio.setVolume(0.4)
+    audio.mute()
+    audio.unmute()
+    audio.fadeTo(1, 1)
+    audio.play(sound)
+    const master = gainAt(ctx, 0)
+    assert.strictEqual(master.gain.calls.find((call) => call.kind === "set")?.value, 0.2)
+    assert.deepStrictEqual(gainAt(ctx, 1).connections, [master])
+    await audio.dispose()
+  })
+
+  it("dispose releases the gain nodes of groups and master", async () => {
+    const { ctx, audio } = setup()
+    audio.group("music")
+    await audio.dispose()
+    assert.deepStrictEqual(
+      ctx.gains.map((gain) => gain.disconnects),
+      [1, 1]
+    )
   })
 })

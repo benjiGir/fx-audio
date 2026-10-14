@@ -1,0 +1,11 @@
+import type { FakeContext } from "../../src/testing.ts"
+
+/** Gain nodes of the voices only: the first gain the core creates is the master group's. */
+export const voiceGains = (ctx: FakeContext) => ctx.gains.slice(1)
+
+/** The gain node created in position `index`, failing loudly when there is none. */
+export const gainAt = (ctx: FakeContext, index: number) => {
+  const gain = ctx.gains[index]
+  if (gain === undefined) throw new Error(`no gain node at ${index}`)
+  return gain
+}
