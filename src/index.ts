@@ -8,5 +8,11 @@ export type {
 export { AudioContextService, BrowserAudioContextLive } from "./context.ts"
 export type { Voice } from "./core.ts"
 export { Audio, AudioBrowserLive, AudioLive } from "./core.ts"
-export { DecodeFailure, LoadError, NetworkFailure, UnsupportedFormat } from "./errors.ts"
-export { PlayOptions, Sound } from "./model.ts"
+export {
+  DecodeFailure,
+  LoadError,
+  NetworkFailure,
+  UnknownSprite,
+  UnsupportedFormat
+} from "./errors.ts"
+export { PlayOptions, Sound, SpriteSegment, SpriteSheet } from "./model.ts"

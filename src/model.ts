@@ -17,3 +17,16 @@ export class PlayOptions extends Schema.Class<PlayOptions>("fx-audio/PlayOptions
   rate: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThan(0))),
   loop: Schema.optionalKey(Schema.Boolean)
 }) {}
+
+/** A named slice of one sound. Times are in seconds, as in the Web Audio API. */
+export class SpriteSegment extends Schema.Class<SpriteSegment>("fx-audio/SpriteSegment")({
+  start: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
+  duration: Schema.Finite.check(Schema.isGreaterThan(0)),
+  loop: Schema.optionalKey(Schema.Boolean)
+}) {}
+
+/** One decoded sound cut into named segments, played with `Audio.playSprite`. */
+export class SpriteSheet extends Schema.Class<SpriteSheet>("fx-audio/SpriteSheet")({
+  sound: Sound,
+  segments: Schema.Record(Schema.String, SpriteSegment)
+}) {}

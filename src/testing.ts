@@ -23,6 +23,12 @@ export interface FakeSource extends SourceNodeLike {
   readonly starts: number
   readonly stops: number
   readonly disconnects: number
+  /** Arguments of every `start` call, in order. */
+  readonly startCalls: ReadonlyArray<{
+    readonly when: number | undefined
+    readonly offset: number | undefined
+    readonly duration: number | undefined
+  }>
   /** Simulate the end of playback: fires `onended` like a real engine. */
   end(): void
 }
@@ -69,11 +75,15 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
     state: "running",
     destination,
     createBufferSource() {
+      const startCalls: Array<FakeSource["startCalls"][number]> = []
       const source: FakeSource & { starts: number; stops: number; disconnects: number } = {
         buffer: null,
         playbackRate: makeParam(),
         loop: false,
+        loopStart: 0,
+        loopEnd: 0,
         onended: null,
+        startCalls,
         starts: 0,
         stops: 0,
         disconnects: 0,
@@ -81,8 +91,9 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
         disconnect() {
           source.disconnects++
         },
-        start() {
+        start(when, offset, duration) {
           source.starts++
+          startCalls.push({ when, offset, duration })
         },
         stop() {
           source.stops++

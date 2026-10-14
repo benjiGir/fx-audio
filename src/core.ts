@@ -5,8 +5,14 @@ import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import type * as Scope from "effect/Scope"
 import { AudioContextService, BrowserAudioContextLive } from "./context.ts"
-import { DecodeFailure, LoadError, NetworkFailure, UnsupportedFormat } from "./errors.ts"
-import { type PlayOptions, Sound } from "./model.ts"
+import {
+  DecodeFailure,
+  LoadError,
+  NetworkFailure,
+  UnknownSprite,
+  UnsupportedFormat
+} from "./errors.ts"
+import { type PlayOptions, Sound, type SpriteSegment, type SpriteSheet } from "./model.ts"
 
 export interface Voice {
   /** Completes when playback ends naturally, the voice is stopped or its scope closes. */
@@ -25,6 +31,16 @@ export class Audio extends Context.Service<
     load(url: string): Effect.Effect<Sound, LoadError>
     /** Start a voice. Its audio nodes are released when the surrounding `Scope` closes. */
     play(sound: Sound, options?: PlayOptions): Effect.Effect<Voice, never, Scope.Scope>
+    /**
+     * Start a voice on one named segment of a sprite sheet. Fails with
+     * `UnknownSprite` when the sheet does not define `name`. `options.loop`
+     * overrides the segment's own `loop` flag.
+     */
+    playSprite(
+      sheet: SpriteSheet,
+      name: string,
+      options?: PlayOptions
+    ): Effect.Effect<Voice, UnknownSprite, Scope.Scope>
   }
 >()("fx-audio/Audio") {}
 
@@ -67,9 +83,10 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       return yield* decode(bytes, url)
     })
 
-    const play = Effect.fnUntraced(function* (
+    const startVoice = Effect.fnUntraced(function* (
       sound: Sound,
-      options: PlayOptions = {}
+      options: PlayOptions,
+      segment: SpriteSegment | undefined
     ): Effect.fn.Return<Voice, never, Scope.Scope> {
       const ended = yield* Deferred.make<void>()
       const { source, gain } = yield* Effect.acquireRelease(
@@ -77,13 +94,22 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
           const source = ctx.createBufferSource()
           const gain = ctx.createGain()
           source.buffer = sound.buffer
-          source.loop = options.loop ?? false
+          source.loop = options.loop ?? segment?.loop ?? false
           if (options.rate !== undefined) source.playbackRate.value = options.rate
           gain.gain.value = options.volume ?? 1
           source.connect(gain)
           gain.connect(ctx.destination)
           source.onended = () => Deferred.doneUnsafe(ended, Effect.void)
-          source.start()
+          if (segment === undefined) {
+            source.start()
+          } else if (source.loop) {
+            // A looping source plays until stopped, so the segment bounds the loop instead.
+            source.loopStart = segment.start
+            source.loopEnd = segment.start + segment.duration
+            source.start(0, segment.start)
+          } else {
+            source.start(0, segment.start, segment.duration)
+          }
           return { source, gain }
         }),
         ({ source, gain }) =>
@@ -113,7 +139,22 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       }
     })
 
-    return Audio.of({ decode, load, play })
+    const play = (sound: Sound, options: PlayOptions = {}) => startVoice(sound, options, undefined)
+
+    const playSprite = Effect.fnUntraced(function* (
+      sheet: SpriteSheet,
+      name: string,
+      options: PlayOptions = {}
+    ): Effect.fn.Return<Voice, UnknownSprite, Scope.Scope> {
+      // `hasOwn` keeps names such as "toString" from resolving to inherited members.
+      const segment = Object.hasOwn(sheet.segments, name) ? sheet.segments[name] : undefined
+      if (segment === undefined) {
+        return yield* new UnknownSprite({ name, available: Object.keys(sheet.segments) })
+      }
+      return yield* startVoice(sheet.sound, options, segment)
+    })
+
+    return Audio.of({ decode, load, play, playSprite })
   })
 )
 

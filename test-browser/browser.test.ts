@@ -1,7 +1,15 @@
 import { assert, describe, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
-import { Audio, AudioContextService, AudioLive, BrowserAudioContextLive } from "../src/index.ts"
+import {
+  Audio,
+  AudioContextService,
+  AudioLive,
+  BrowserAudioContextLive,
+  type Sound,
+  SpriteSegment,
+  SpriteSheet
+} from "../src/index.ts"
 import { makeWav } from "../test/helpers/wav.ts"
 import { makeOfflineContext, peak } from "./offline.ts"
 
@@ -90,6 +98,61 @@ describe("the audio graph on a real engine (offline render)", () => {
       }
       assert.isAbove(window(0, 0.1), window(0.4, 0.5))
       assert.isBelow(window(0.6, 0.85), 0.001)
+    }).pipe(
+      Effect.scoped,
+      Effect.timeout("10 seconds"),
+      Effect.provide(AudioLive.pipe(Layer.provide(layer)))
+    )
+  })
+})
+
+describe("sprites on a real engine (offline render)", () => {
+  const sampleRate = 44100
+  const windowPeak = (buffer: AudioBuffer, from: number, to: number) => {
+    const data = buffer.getChannelData(0)
+    let max = 0
+    for (let i = Math.round(from * sampleRate); i < Math.round(to * sampleRate); i++) {
+      max = Math.max(max, Math.abs(data[i] ?? 0))
+    }
+    return max
+  }
+  const sheetOf = (sound: Sound, segment: SpriteSegment) =>
+    new SpriteSheet({ sound, segments: { cut: segment } })
+
+  it.live("a one-shot segment plays for its duration and then falls silent", () => {
+    const { layer, render } = makeOfflineContext(0.6)
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const sound = yield* audio.decode(makeWav(1), "tone.wav")
+      const voice = yield* audio.playSprite(
+        sheetOf(sound, new SpriteSegment({ start: 0.5, duration: 0.2 })),
+        "cut",
+        { volume: 0.5 }
+      )
+      const rendered = yield* Effect.promise(render)
+      yield* voice.ended
+      assert.isAbove(windowPeak(rendered, 0.02, 0.18), 0.1)
+      assert.isBelow(windowPeak(rendered, 0.25, 0.6), 0.001)
+    }).pipe(
+      Effect.scoped,
+      Effect.timeout("10 seconds"),
+      Effect.provide(AudioLive.pipe(Layer.provide(layer)))
+    )
+  })
+
+  it.live("a looping segment keeps sounding past its own duration", () => {
+    const { layer, render } = makeOfflineContext(0.6)
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const sound = yield* audio.decode(makeWav(1), "tone.wav")
+      yield* audio.playSprite(
+        sheetOf(sound, new SpriteSegment({ start: 0.1, duration: 0.1, loop: true })),
+        "cut",
+        { volume: 0.5 }
+      )
+      const rendered = yield* Effect.promise(render)
+      assert.isAbove(windowPeak(rendered, 0.02, 0.18), 0.1)
+      assert.isAbove(windowPeak(rendered, 0.4, 0.58), 0.1)
     }).pipe(
       Effect.scoped,
       Effect.timeout("10 seconds"),

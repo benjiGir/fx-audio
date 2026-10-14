@@ -8,7 +8,7 @@ import type { AudioContextService } from "./context.ts"
 import { BrowserAudioContextLive } from "./context.ts"
 import type { Voice } from "./core.ts"
 import { Audio, AudioLive } from "./core.ts"
-import type { Sound } from "./model.ts"
+import type { Sound, SpriteSheet } from "./model.ts"
 import { PlayOptions } from "./model.ts"
 
 /** Promise facade for users who do not use Effect. Same engine, no Effect types. */
@@ -22,6 +22,8 @@ export interface PromiseAudio {
   load(url: string, signal?: AbortSignal): Promise<Sound>
   /** Throws a `SchemaError` when the options are invalid (negative volume, NaN rate, ...). */
   play(sound: Sound, options?: unknown): PromiseVoice
+  /** Throws an `UnknownSprite` when the sheet does not define `name`, and a `SchemaError` on invalid options. */
+  playSprite(sheet: SpriteSheet, name: string, options?: unknown): PromiseVoice
   dispose(): Promise<void>
 }
 
@@ -49,6 +51,16 @@ export const createAudio = (
       return wrap(
         runtime.runSync(
           Audio.use((audio) => audio.play(sound, decoded)).pipe(
+            Effect.provideService(Scope.Scope, scope)
+          )
+        )
+      )
+    },
+    playSprite: (sheet, name, options) => {
+      const decoded = decodeOptions(options ?? {})
+      return wrap(
+        runtime.runSync(
+          Audio.use((audio) => audio.playSprite(sheet, name, decoded)).pipe(
             Effect.provideService(Scope.Scope, scope)
           )
         )

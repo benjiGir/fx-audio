@@ -4,7 +4,15 @@ import * as Effect from "effect/Effect"
 import * as Fiber from "effect/Fiber"
 import * as Layer from "effect/Layer"
 import { afterEach, vi } from "vitest"
-import { Audio, AudioLive, LoadError, Sound } from "../src/index.ts"
+import {
+  Audio,
+  AudioLive,
+  LoadError,
+  Sound,
+  SpriteSegment,
+  SpriteSheet,
+  UnknownSprite
+} from "../src/index.ts"
 import type { FakeContext } from "../src/testing.ts"
 import { FakeAudioContextLive, makeFakeContext } from "../src/testing.ts"
 
@@ -225,4 +233,85 @@ describe("Audio.play", () => {
       ])
     }).pipe(Effect.scoped, Effect.provide(audioLayer(ctx)))
   })
+})
+
+describe("Audio.playSprite", () => {
+  const sheet = new SpriteSheet({
+    sound,
+    segments: {
+      hit: new SpriteSegment({ start: 0.25, duration: 0.5 }),
+      engine: new SpriteSegment({ start: 1, duration: 2, loop: true })
+    }
+  })
+
+  it.effect("plays only the segment of a one-shot sprite", () => {
+    const ctx = makeFakeContext()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.playSprite(sheet, "hit", { volume: 0.4 })
+      const [source] = ctx.sources
+      assert.strictEqual(source?.buffer, buffer)
+      assert.isFalse(source?.loop)
+      assert.deepStrictEqual(source?.startCalls, [{ when: 0, offset: 0.25, duration: 0.5 }])
+      assert.strictEqual(ctx.gains[0]?.gain.value, 0.4)
+    }).pipe(Effect.scoped, Effect.provide(audioLayer(ctx)))
+  })
+
+  it.effect("loops inside the segment bounds when the segment loops", () => {
+    const ctx = makeFakeContext()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.playSprite(sheet, "engine")
+      const [source] = ctx.sources
+      assert.isTrue(source?.loop)
+      assert.strictEqual(source?.loopStart, 1)
+      assert.strictEqual(source?.loopEnd, 3)
+      assert.deepStrictEqual(source?.startCalls, [{ when: 0, offset: 1, duration: undefined }])
+    }).pipe(Effect.scoped, Effect.provide(audioLayer(ctx)))
+  })
+
+  it.effect("lets options.loop override the segment's loop flag", () => {
+    const ctx = makeFakeContext()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.playSprite(sheet, "engine", { loop: false })
+      yield* audio.playSprite(sheet, "hit", { loop: true })
+      assert.isFalse(ctx.sources[0]?.loop)
+      assert.deepStrictEqual(ctx.sources[0]?.startCalls, [{ when: 0, offset: 1, duration: 2 }])
+      assert.isTrue(ctx.sources[1]?.loop)
+      assert.strictEqual(ctx.sources[1]?.loopEnd, 0.75)
+    }).pipe(Effect.scoped, Effect.provide(audioLayer(ctx)))
+  })
+
+  it.effect("returns a voice that stops, fades and releases like a plain one", () => {
+    const ctx = makeFakeContext()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const voice = yield* audio.playSprite(sheet, "hit")
+      yield* voice.fadeTo(0, Duration.seconds(1))
+      yield* voice.stop
+      assert.strictEqual(ctx.sources[0]?.stops, 1)
+      assert.strictEqual(ctx.gains[0]?.gain.calls.at(-1)?.kind, "ramp")
+    }).pipe(Effect.scoped, Effect.provide(audioLayer(ctx)))
+  })
+
+  it.effect("fails with UnknownSprite listing the available names", () => {
+    const ctx = makeFakeContext()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const error = yield* Effect.flip(audio.playSprite(sheet, "nope"))
+      assert.instanceOf(error, UnknownSprite)
+      assert.strictEqual(error.name, "nope")
+      assert.deepStrictEqual(error.available, ["hit", "engine"])
+      assert.strictEqual(ctx.sources.length, 0)
+    }).pipe(Effect.scoped, Effect.provide(audioLayer(ctx)))
+  })
+
+  it.effect("does not resolve names inherited from Object.prototype", () =>
+    Effect.gen(function* () {
+      const audio = yield* Audio
+      const error = yield* Effect.flip(audio.playSprite(sheet, "toString"))
+      assert.strictEqual(error._tag, "UnknownSprite")
+    }).pipe(Effect.scoped, Effect.provide(audioLayer(makeFakeContext())))
+  )
 })
