@@ -5,6 +5,8 @@ It aims to replace Howler.js with a smaller, faster, fully typed and thoroughly 
 
 > Status: pre-alpha. The API is not stable yet.
 
+Documentation: <https://benjigir.github.io/fx-audio/>
+
 ## Requirements
 
 - ESM only, Node 22 or later.

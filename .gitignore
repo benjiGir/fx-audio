@@ -5,3 +5,5 @@ coverage/
 .stryker-tmp/
 reports/
 bench/.out/
+docs/.vitepress/cache/
+docs/.vitepress/dist/

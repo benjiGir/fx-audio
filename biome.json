@@ -9,6 +9,8 @@
       "examples/**",
       "bench/**",
       "!bench/.out",
+      "docs/examples/**",
+      "docs/.vitepress/config.ts",
       "*.json",
       "*.ts",
       ".github/**",
