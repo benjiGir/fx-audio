@@ -1,3 +1,8 @@
+/**
+ * `NodeAudioContextLive`, an audio context backed by `node-web-audio-api` that loads sounds from disk.
+ * @module fx-audio/node
+ */
+
 import { readFile } from "node:fs/promises"
 import { fileURLToPath } from "node:url"
 import * as Effect from "effect/Effect"
@@ -17,6 +22,11 @@ const readLocalFile = async (location: string, signal: AbortSignal): Promise<Arr
  * never install or bundle it). `silent` avoids needing a sound card.
  * Sounds load from disk: `Audio.load` takes a path (relative to the working directory)
  * or a `file:` URL, such as `new URL("./hit.wav", import.meta.url).href`.
+ *
+ * @example
+ * ```ts
+ * const layer = AudioLive.pipe(Layer.provide(NodeAudioContextLive({ silent: true })))
+ * ```
  */
 export const NodeAudioContextLive = (
   options: { readonly silent?: boolean } = {}

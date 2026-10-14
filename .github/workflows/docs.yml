@@ -6,6 +6,9 @@ on:
       - "docs/**"
       - "src/**"
       - "package.json"
+      - "typedoc.json"
+      - "scripts/typedoc-plugin.mjs"
+      - "tsconfig.json"
       - ".github/workflows/docs.yml"
   push:
     branches: [main]
@@ -13,6 +16,9 @@ on:
       - "docs/**"
       - "src/**"
       - "package.json"
+      - "typedoc.json"
+      - "scripts/typedoc-plugin.mjs"
+      - "tsconfig.json"
       - ".github/workflows/docs.yml"
   workflow_dispatch:
 

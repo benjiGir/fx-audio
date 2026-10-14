@@ -1,3 +1,9 @@
+/**
+ * The Effect core: the `Audio` service with its voices, groups and listener, the data
+ * classes (`Sound`, `PlayOptions`, `SpriteSheet`...), the typed errors and the browser layers.
+ * @module fx-audio
+ */
+
 export type {
   AudioContextLike,
   AudioListenerLike,
