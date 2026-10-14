@@ -14,7 +14,7 @@ afterEach(() => {
 })
 
 const stubAudioContext = () => {
-  const close = vi.fn(() => Promise.resolve())
+  const close = vi.fn<() => Promise<void>>(() => Promise.resolve())
   const instances: Array<unknown> = []
   vi.stubGlobal(
     "AudioContext",
@@ -75,7 +75,11 @@ describe("resuming on a user gesture", () => {
     const added = vi.spyOn(document, "addEventListener")
     const removed = vi.spyOn(document, "removeEventListener")
     vi.stubGlobal("document", document)
-    const ctx = { state: "suspended", resume: vi.fn(resume), close: () => Promise.resolve() }
+    const ctx = {
+      state: "suspended",
+      resume: vi.fn<() => Promise<void>>(resume),
+      close: () => Promise.resolve()
+    }
     // `new` on a plain function that returns an object gives that object.
     vi.stubGlobal("AudioContext", function AudioContext() {
       return ctx

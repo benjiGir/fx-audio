@@ -127,6 +127,7 @@ describe("loading from disk under Node", () => {
     const audio = await createAudioAsync(NodeAudioContextLive({ silent: true }))
     const sound = await audio.load(wav)
     await audio.play(sound).ended
+    assert.isAbove(sound.buffer.duration, 0)
     await audio.dispose()
   })
 })
