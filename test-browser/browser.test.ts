@@ -3,6 +3,7 @@ import type * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import type * as Scope from "effect/Scope"
+import { server, userEvent } from "vitest/browser"
 import {
   Audio,
   AudioContextService,
@@ -18,6 +19,30 @@ import { makeWav } from "../test/helpers/wav.ts"
 import { makeOfflineContext, peak } from "./offline.ts"
 
 const realAudio = AudioLive.pipe(Layer.provideMerge(BrowserAudioContextLive))
+
+describe("resuming on a real user gesture", () => {
+  // Firefox on a CI machine has no sound card and never lets a real-time context run,
+  // so the state is only checked strictly on Chromium, while the resume call is checked everywhere.
+  it.live("the first real click resumes the context and the browser may then run it", () =>
+    Effect.gen(function* () {
+      const { ctx } = yield* AudioContextService
+      const resume = ctx.resume.bind(ctx)
+      let resumes = 0
+      ctx.resume = () => {
+        resumes++
+        return resume()
+      }
+      assert.strictEqual(ctx.state, "suspended")
+      yield* Effect.promise(() => userEvent.click(document.body))
+      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 300)))
+      assert.isAtLeast(resumes, 1)
+      // Chromium CI machines run a real-time context without a device, so it is checked strictly there.
+      if (server.browser === "chromium" || ctx.state !== "suspended") {
+        assert.strictEqual(ctx.state, "running")
+      }
+    }).pipe(Effect.provide(BrowserAudioContextLive), Effect.scoped)
+  )
+})
 
 describe("the browser's native AudioContext", () => {
   it.live("decodes a WAV with the native decoder", () =>

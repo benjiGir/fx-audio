@@ -103,6 +103,13 @@ describe("promise facade", () => {
     await audio.dispose()
   })
 
+  it("resumes the context", async () => {
+    const { ctx, audio } = setup()
+    await audio.resume()
+    assert.strictEqual(ctx.resumes, 1)
+    await audio.dispose()
+  })
+
   it("throws on invalid play options before touching the engine", async () => {
     const { ctx, audio } = setup()
     assert.throws(() =>

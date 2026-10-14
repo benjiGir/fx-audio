@@ -50,6 +50,8 @@ export interface PromiseAudio extends PromiseGroup {
   group(name: string): PromiseGroup
   /** The listener spatial voices are heard from. */
   readonly listener: PromiseListener
+  /** Resume a context the browser kept suspended. Call it from a user gesture; it also happens on the first click, key press or touch. */
+  resume(): Promise<void>
   dispose(): Promise<void>
 }
 
@@ -90,6 +92,7 @@ export const createAudio = (
       setPosition: (position) => runtime.runSync(listener.setPosition(position)),
       setOrientation: (forward, up) => runtime.runSync(listener.setOrientation(forward, up))
     },
+    resume: () => runtime.runPromise(audio.resume),
     load: (url, signal) =>
       runtime.runPromise(audio.load(url), signal === undefined ? undefined : { signal }),
     group: (name) => {

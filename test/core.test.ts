@@ -898,3 +898,24 @@ describe("listener", () => {
     })
   })
 })
+
+describe("resume", () => {
+  it.effect("resumes the context", () => {
+    const ctx = makeFakeContext()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* audio.resume
+      yield* audio.resume
+      assert.strictEqual(ctx.resumes, 2)
+    }).pipe(Effect.provide(audioLayer(ctx)))
+  })
+
+  it.effect("dies when the engine refuses", () => {
+    const ctx = makeFakeContext({ resume: () => Promise.reject(new Error("closed")) })
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const exit = yield* Effect.exit(audio.resume)
+      assert.isTrue(exit._tag === "Failure")
+    }).pipe(Effect.provide(audioLayer(ctx)))
+  })
+})

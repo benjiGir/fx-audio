@@ -93,7 +93,42 @@ export class AudioContextService extends Context.Service<
   { readonly ctx: AudioContextLike }
 >()("fx-audio/AudioContext") {}
 
-/** Browser layer: one `AudioContext` per layer build, closed with its scope. */
+const gestures = ["pointerdown", "keydown", "touchend"] as const
+// Capturing, so a page that stops propagation of its own events cannot hide the gesture.
+const capture = { capture: true }
+
+/**
+ * Browsers keep a new `AudioContext` suspended until the page has seen a user gesture.
+ * Resume it on the first gesture that works, then stop listening. A gesture the browser
+ * refuses (resume rejects, or the context stays suspended) leaves the listeners in place
+ * for the next one.
+ */
+const resumeOnGesture = (ctx: AudioContextLike) =>
+  Effect.acquireRelease(
+    Effect.sync(() => {
+      if (ctx.state !== "suspended" || typeof document === "undefined") return undefined
+      const stop = () => {
+        for (const gesture of gestures) document.removeEventListener(gesture, onGesture, capture)
+      }
+      const onGesture = () => {
+        ctx.resume().then(
+          () => {
+            if (ctx.state === "running") stop()
+          },
+          () => undefined
+        )
+      }
+      for (const gesture of gestures) document.addEventListener(gesture, onGesture, capture)
+      return stop
+    }),
+    (stop) => Effect.sync(() => stop?.())
+  )
+
+/**
+ * Browser layer: one `AudioContext` per layer build, closed with its scope. A context
+ * the browser starts suspended is resumed on the first user gesture, so sounds played
+ * before it are heard from that moment on.
+ */
 export const BrowserAudioContextLive: Layer.Layer<AudioContextService> = Layer.effect(
   AudioContextService,
   Effect.gen(function* () {
@@ -101,6 +136,7 @@ export const BrowserAudioContextLive: Layer.Layer<AudioContextService> = Layer.e
       Effect.sync(() => new AudioContext() as unknown as AudioContextLike),
       (ctx) => Effect.promise(() => ctx.close())
     )
+    yield* resumeOnGesture(ctx)
     return AudioContextService.of({ ctx })
   })
 )
