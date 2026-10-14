@@ -1,0 +1,23 @@
+{
+  "name": "fx-audio-spike",
+  "private": true,
+  "type": "module",
+  "description": "Throwaway phase-1 prototype: measures bundle size, play() latency and Node decoding. Not the library.",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "size": "node --experimental-strip-types bench/size.ts",
+    "decode": "node --experimental-strip-types bench/decode.ts",
+    "latency": "node --experimental-strip-types bench/latency.ts"
+  },
+  "dependencies": {
+    "effect": "4.0.4"
+  },
+  "optionalDependencies": {
+    "node-web-audio-api": "2.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "rolldown": "1.2.14",
+    "typescript": "^5.9.0"
+  }
+}
