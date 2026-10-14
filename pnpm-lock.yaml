@@ -29,6 +29,9 @@ importers:
       '@stryker-mutator/vitest-runner':
         specifier: 10.0.0
         version: 10.0.0(@stryker-mutator/core@10.0.0(@types/node@22.20.5))(vitest@4.1.11)
+      '@types/howler':
+        specifier: 2.2.13
+        version: 2.2.13
       '@types/node':
         specifier: ^22.0.0
         version: 22.20.5
@@ -41,6 +44,9 @@ importers:
       effect:
         specifier: 4.0.4
         version: 4.0.4
+      howler:
+        specifier: 2.2.4
+        version: 2.2.4
       node-web-audio-api:
         specifier: 2.2.0
         version: 2.2.0
@@ -1117,6 +1123,9 @@ packages:
   '@types/hast@3.0.5':
     resolution: {integrity: sha512-rp/ezSWaD1m44dPKICGhiskI13nVr7qTloFwDa/IYkhhf5nzwP+zIQcIJh3WIFSBOy/H1PzB40jPjMDksN4F+g==}
 
+  '@types/howler@2.2.13':
+    resolution: {integrity: sha512-40+EBjqIHHrC4VShlz/7i0lBUsE3QkgzZinQQji74Hd8sBkJZUBaT7LWFLK6rcabsDOOQpoMbEJvtaFQwxOu/g==}
+
   '@types/jsesc@2.5.1':
     resolution: {integrity: sha512-9VN+6yxLOPLOav+7PwjZbxiID2bVaeq0ED4qSQmdQTdjnXJSaCVKTR58t15oqH1H5t8Ng2ZX1SabJVoN9Q34bw==}
 
@@ -1750,6 +1759,9 @@ packages:
 
   hookable@6.1.2:
     resolution: {integrity: sha512-+abwxtiEA52GCVIsQqut3S/uKTbUwYIp4Pe/vv+6py5XiXBCqMZHg6pA6Y5qhgLSEys0/cYuPbO0z1QFj5ZCmg==}
+
+  howler@2.2.4:
+    resolution: {integrity: sha512-iARIBPgcQrwtEr+tALF+rapJ8qSc+Set2GJQl7xT1MQzWaVkFebdJhR3alVlSiUf5U7nAANKuj3aWpwerocD5w==}
 
   html-escaper@2.0.2:
     resolution: {integrity: sha512-H2iMtd0I4Mt5eYiapRdIDjp+XzelXQ0tFE4JS7YFwFevXXMmOp9myNrUvCg0D6ws8iqkRPBfKHgbwig1SmlLfg==}
@@ -3711,6 +3723,8 @@ snapshots:
     dependencies:
       '@types/unist': 3.0.3
 
+  '@types/howler@2.2.13': {}
+
   '@types/jsesc@2.5.1': {}
 
   '@types/linkify-it@5.0.0': {}
@@ -4358,6 +4372,8 @@ snapshots:
   hookable@5.5.3: {}
 
   hookable@6.1.2: {}
+
+  howler@2.2.4: {}
 
   html-escaper@2.0.2: {}
 
