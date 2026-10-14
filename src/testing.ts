@@ -1,9 +1,11 @@
 import * as Layer from "effect/Layer"
 import type {
   AudioContextLike,
+  AudioListenerLike,
   AudioNodeLike,
   AudioParamLike,
   GainNodeLike,
+  PannerNodeLike,
   SourceNodeLike,
   StereoPannerNodeLike
 } from "./context.ts"
@@ -50,17 +52,56 @@ export interface FakePanner extends StereoPannerNodeLike {
   readonly connections: ReadonlyArray<AudioNodeLike>
 }
 
+export interface FakeSpatialPanner extends PannerNodeLike {
+  readonly positionX: FakeParam
+  readonly positionY: FakeParam
+  readonly positionZ: FakeParam
+  readonly orientationX: FakeParam
+  readonly orientationY: FakeParam
+  readonly orientationZ: FakeParam
+  readonly disconnects: number
+  /** Every node this panner was connected to, in order. */
+  readonly connections: ReadonlyArray<AudioNodeLike>
+}
+
+/** A listener with `AudioParam`s, as in Chromium and WebKit. */
+export interface FakeListener extends AudioListenerLike {
+  readonly positionX: FakeParam
+  readonly positionY: FakeParam
+  readonly positionZ: FakeParam
+  readonly forwardX: FakeParam
+  readonly forwardY: FakeParam
+  readonly forwardZ: FakeParam
+  readonly upX: FakeParam
+  readonly upY: FakeParam
+  readonly upZ: FakeParam
+}
+
+/** A listener with only the older `setPosition` and `setOrientation` methods, as in Firefox. */
+export interface FakeLegacyListener extends AudioListenerLike {
+  /** Arguments of every call, in order. */
+  readonly calls: Array<{
+    readonly method: "setPosition" | "setOrientation"
+    readonly args: ReadonlyArray<number>
+  }>
+}
+
 /** Pure-JS audio context double: records nodes and calls, does no audio work. */
 export interface FakeContext extends AudioContextLike {
   readonly sources: ReadonlyArray<FakeSource>
   readonly gains: ReadonlyArray<FakeGain>
   readonly panners: ReadonlyArray<FakePanner>
+  /** The 3D panners, in creation order. */
+  readonly spatialPanners: ReadonlyArray<FakeSpatialPanner>
+  readonly listener: AudioListenerLike
   currentTime: number
 }
 
 export interface FakeContextOptions {
   /** Replace the decoder. By default every decode rejects. */
   readonly decodeAudioData?: (data: ArrayBuffer) => Promise<AudioBuffer>
+  /** Replace the listener, by default a `makeFakeListener()`. */
+  readonly listener?: AudioListenerLike
 }
 
 const makeParam = (): FakeParam => {
@@ -80,15 +121,43 @@ const makeParam = (): FakeParam => {
   }
 }
 
+export const makeFakeListener = (): FakeListener => ({
+  positionX: makeParam(),
+  positionY: makeParam(),
+  positionZ: makeParam(),
+  forwardX: makeParam(),
+  forwardY: makeParam(),
+  forwardZ: makeParam(),
+  upX: makeParam(),
+  upY: makeParam(),
+  upZ: makeParam()
+})
+
+export const makeLegacyListener = (): FakeLegacyListener => {
+  const calls: FakeLegacyListener["calls"] = []
+  return {
+    calls,
+    setPosition: (...args) => {
+      calls.push({ method: "setPosition", args })
+    },
+    setOrientation: (...args) => {
+      calls.push({ method: "setOrientation", args })
+    }
+  }
+}
+
 export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext => {
   const sources: Array<FakeSource> = []
   const gains: Array<FakeGain> = []
   const panners: Array<FakePanner> = []
+  const spatialPanners: Array<FakeSpatialPanner> = []
   const destination: AudioNodeLike = { connect: () => undefined, disconnect() {} }
   return {
     sources,
     gains,
     panners,
+    spatialPanners,
+    listener: options.listener ?? makeFakeListener(),
     currentTime: 0,
     state: "running",
     destination,
@@ -157,6 +226,36 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
         }
       }
       panners.push(panner)
+      return panner
+    },
+    createPanner() {
+      const connections: Array<AudioNodeLike> = []
+      const panner: FakeSpatialPanner & { disconnects: number } = {
+        positionX: makeParam(),
+        positionY: makeParam(),
+        positionZ: makeParam(),
+        orientationX: makeParam(),
+        orientationY: makeParam(),
+        orientationZ: makeParam(),
+        // The Web Audio defaults, which the core leaves alone unless asked.
+        panningModel: "equalpower",
+        distanceModel: "inverse",
+        refDistance: 1,
+        maxDistance: 10000,
+        rolloffFactor: 1,
+        coneInnerAngle: 360,
+        coneOuterAngle: 360,
+        coneOuterGain: 0,
+        disconnects: 0,
+        connections,
+        connect(destination) {
+          connections.push(destination)
+        },
+        disconnect() {
+          panner.disconnects++
+        }
+      }
+      spatialPanners.push(panner)
       return panner
     },
     decodeAudioData:

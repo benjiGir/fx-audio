@@ -16,3 +16,10 @@ export const pannerAt = (ctx: FakeContext, index: number) => {
   if (panner === undefined) throw new Error(`no panner node at ${index}`)
   return panner
 }
+
+/** The 3D panner created in position `index`, failing loudly when there is none. */
+export const spatialAt = (ctx: FakeContext, index: number) => {
+  const panner = ctx.spatialPanners[index]
+  if (panner === undefined) throw new Error(`no spatial panner node at ${index}`)
+  return panner
+}

@@ -2,6 +2,7 @@ import * as Layer from "effect/Layer"
 import type {
   AudioContextLike,
   GainNodeLike,
+  PannerNodeLike,
   SourceNodeLike,
   StereoPannerNodeLike
 } from "../src/index.ts"
@@ -24,6 +25,8 @@ export const makeOfflineContext = (seconds = 0.5, sampleRate = 44100, channels =
     destination: offline.destination as unknown as AudioContextLike["destination"],
     createBufferSource: () => offline.createBufferSource() as unknown as SourceNodeLike,
     createGain: () => offline.createGain() as unknown as GainNodeLike,
+    listener: offline.listener as unknown as AudioContextLike["listener"],
+    createPanner: () => offline.createPanner() as unknown as PannerNodeLike,
     createStereoPanner: () => offline.createStereoPanner() as unknown as StereoPannerNodeLike,
     decodeAudioData: (data) => offline.decodeAudioData(data),
     resume: () => offline.resume(),

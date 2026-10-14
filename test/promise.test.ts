@@ -1,7 +1,14 @@
 import { afterEach, assert, describe, it, vi } from "vitest"
-import { LoadError, Sound, SpriteSegment, SpriteSheet, UnknownSprite } from "../src/index.ts"
+import {
+  LoadError,
+  Sound,
+  SpriteSegment,
+  SpriteSheet,
+  UnknownSprite,
+  Vector3
+} from "../src/index.ts"
 import { createAudio } from "../src/promise.ts"
-import { FakeAudioContextLive, makeFakeContext } from "../src/testing.ts"
+import { FakeAudioContextLive, makeFakeContext, makeFakeListener } from "../src/testing.ts"
 import { gainAt, voiceGains } from "./helpers/graph.ts"
 
 const buffer = { duration: 1 } as AudioBuffer
@@ -11,8 +18,9 @@ afterEach(() => {
 })
 
 const setup = () => {
-  const ctx = makeFakeContext({ decodeAudioData: () => Promise.resolve(buffer) })
-  return { ctx, audio: createAudio(FakeAudioContextLive(ctx)) }
+  const listener = makeFakeListener()
+  const ctx = makeFakeContext({ decodeAudioData: () => Promise.resolve(buffer), listener })
+  return { ctx, listener, audio: createAudio(FakeAudioContextLive(ctx)) }
 }
 
 describe("promise facade", () => {
@@ -69,6 +77,29 @@ describe("promise facade", () => {
     voice.setPan(0.5)
     assert.strictEqual(ctx.panners[0]?.pan.value, 0.5)
     assert.throws(() => voice.setPan(2))
+    await audio.dispose()
+  })
+
+  it("positions a voice in 3D, at start and afterwards", async () => {
+    const { ctx, audio } = setup()
+    const voice = audio.play(new Sound({ buffer, source: "a.wav" }), {
+      spatial: { position: { x: 1, y: 0, z: 0 } }
+    })
+    voice.setPosition(new Vector3({ x: 3, y: 0, z: 0 }))
+    assert.strictEqual(ctx.spatialPanners[0]?.positionX.value, 3)
+    assert.throws(() => voice.setPosition({ x: Number.NaN, y: 0, z: 0 }))
+    await audio.dispose()
+  })
+
+  it("moves the listener", async () => {
+    const { listener, audio } = setup()
+    audio.listener.setPosition(new Vector3({ x: 7, y: 0, z: 0 }))
+    audio.listener.setOrientation(
+      new Vector3({ x: 0, y: 0, z: 1 }),
+      new Vector3({ x: 0, y: 1, z: 0 })
+    )
+    assert.strictEqual(listener.positionX.value, 7)
+    assert.strictEqual(listener.forwardZ.value, 1)
     await audio.dispose()
   })
 

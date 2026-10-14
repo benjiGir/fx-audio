@@ -37,13 +37,51 @@ export interface StereoPannerNodeLike extends AudioNodeLike {
   readonly pan: AudioParamLike
 }
 
+export interface PannerNodeLike extends AudioNodeLike {
+  readonly positionX: AudioParamLike
+  readonly positionY: AudioParamLike
+  readonly positionZ: AudioParamLike
+  readonly orientationX: AudioParamLike
+  readonly orientationY: AudioParamLike
+  readonly orientationZ: AudioParamLike
+  panningModel: "equalpower" | "HRTF"
+  distanceModel: "linear" | "inverse" | "exponential"
+  refDistance: number
+  maxDistance: number
+  rolloffFactor: number
+  coneInnerAngle: number
+  coneOuterAngle: number
+  coneOuterGain: number
+}
+
+/**
+ * The one listener of a context: where the sound is heard from. Engines that have not
+ * adopted the `AudioParam` form (Firefox today) only offer the older `setPosition` and
+ * `setOrientation` methods, so the core uses whichever it finds.
+ */
+export interface AudioListenerLike {
+  readonly positionX?: AudioParamLike
+  readonly positionY?: AudioParamLike
+  readonly positionZ?: AudioParamLike
+  readonly forwardX?: AudioParamLike
+  readonly forwardY?: AudioParamLike
+  readonly forwardZ?: AudioParamLike
+  readonly upX?: AudioParamLike
+  readonly upY?: AudioParamLike
+  readonly upZ?: AudioParamLike
+  setPosition?(x: number, y: number, z: number): void
+  setOrientation?(x: number, y: number, z: number, xUp: number, yUp: number, zUp: number): void
+}
+
 export interface AudioContextLike {
   readonly currentTime: number
   readonly state: string
   readonly destination: AudioNodeLike
+  readonly listener: AudioListenerLike
   createBufferSource(): SourceNodeLike
   createGain(): GainNodeLike
   createStereoPanner(): StereoPannerNodeLike
+  createPanner(): PannerNodeLike
   decodeAudioData(data: ArrayBuffer): Promise<AudioBuffer>
   resume(): Promise<void>
   close(): Promise<void>

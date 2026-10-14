@@ -1,4 +1,5 @@
 import { assert, describe, it } from "@effect/vitest"
+import type * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import type * as Scope from "effect/Scope"
@@ -10,7 +11,8 @@ import {
   type LoadError,
   type Sound,
   SpriteSegment,
-  SpriteSheet
+  SpriteSheet,
+  Vector3
 } from "../src/index.ts"
 import { makeWav } from "../test/helpers/wav.ts"
 import { makeOfflineContext, peak } from "./offline.ts"
@@ -165,7 +167,9 @@ describe("sprites on a real engine (offline render)", () => {
 
 describe("groups on a real engine (offline render)", () => {
   const run = (
-    program: (audio: Audio["Service"]) => Effect.Effect<void, LoadError, Scope.Scope>
+    program: (
+      audio: Context.Service.Shape<typeof Audio>
+    ) => Effect.Effect<void, LoadError, Scope.Scope>
   ) => {
     const { layer, render } = makeOfflineContext(0.3)
     return Effect.gen(function* () {
@@ -253,6 +257,101 @@ describe("stereo pan on a real engine (offline render)", () => {
       const rendered = yield* render(-1, 1)
       assert.isAbove(peak(rendered, 1), 0.1)
       assert.isBelow(peak(rendered, 0), 0.001)
+    })
+  )
+})
+
+describe("3D position on a real engine (offline render)", () => {
+  const at = (x: number, y: number, z: number) => new Vector3({ x, y, z })
+
+  /** Plays a 0.2 s tone, lets `arrange` move things around, and returns the stereo render. */
+  const render = (
+    spatial: { position: Vector3 },
+    arrange: (
+      audio: Context.Service.Shape<typeof Audio>,
+      voice: { setPosition: (p: Vector3) => Effect.Effect<void> }
+    ) => Effect.Effect<void> = () => Effect.void
+  ) => {
+    const { layer, render } = makeOfflineContext(0.3, 44100, 2)
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const sound = yield* audio.decode(makeWav(0.2), "tone.wav")
+      const voice = yield* audio.play(sound, { spatial })
+      yield* arrange(audio, voice)
+      return yield* Effect.promise(render)
+    }).pipe(
+      Effect.scoped,
+      Effect.timeout("10 seconds"),
+      Effect.provide(AudioLive.pipe(Layer.provide(layer)))
+    )
+  }
+
+  it.live("a voice on the right is heard on the right only", () =>
+    Effect.gen(function* () {
+      const rendered = yield* render({ position: at(2, 0, 0) })
+      assert.isAbove(peak(rendered, 1), 0.01)
+      assert.isBelow(peak(rendered, 0), 0.001)
+    })
+  )
+
+  it.live("setPosition moves the voice to the other side", () =>
+    Effect.gen(function* () {
+      const rendered = yield* render({ position: at(2, 0, 0) }, (_audio, voice) =>
+        voice.setPosition(at(-2, 0, 0))
+      )
+      assert.isAbove(peak(rendered, 0), 0.01)
+      assert.isBelow(peak(rendered, 1), 0.001)
+    })
+  )
+
+  it.live("moving the listener past the voice swaps the sides", () =>
+    Effect.gen(function* () {
+      const rendered = yield* render({ position: at(2, 0, 0) }, (audio) =>
+        audio.listener.setPosition(at(10, 0, 0))
+      )
+      assert.isAbove(peak(rendered, 0), 0.01)
+      assert.isBelow(peak(rendered, 1), 0.001)
+    })
+  )
+
+  it.live("turning the listener around swaps the sides", () =>
+    Effect.gen(function* () {
+      const rendered = yield* render({ position: at(2, 0, 0) }, (audio) =>
+        audio.listener.setOrientation(at(0, 0, 1), at(0, 1, 0))
+      )
+      assert.isAbove(peak(rendered, 0), 0.01)
+      assert.isBelow(peak(rendered, 1), 0.001)
+    })
+  )
+
+  it.live("a voice four times farther is a quarter as loud with the inverse model", () =>
+    Effect.gen(function* () {
+      const near = yield* render({ position: at(0, 0, -1) })
+      const far = yield* render({ position: at(0, 0, -4) })
+      assert.closeTo(peak(far, 0) / peak(near, 0), 0.25, 0.02)
+    })
+  )
+
+  it.live("honours the distance attributes it is given", () =>
+    Effect.gen(function* () {
+      const { layer, render: renderGraph } = makeOfflineContext(0.3, 44100, 2)
+      const rendered = yield* Effect.gen(function* () {
+        const audio = yield* Audio
+        const sound = yield* audio.decode(makeWav(0.2), "tone.wav")
+        // Linear model, silent from 10 on: halfway between 1 and 10 it is about half as loud.
+        yield* audio.play(sound, {
+          spatial: {
+            position: at(0, 0, -5.5),
+            distanceModel: "linear",
+            refDistance: 1,
+            maxDistance: 10,
+            rolloffFactor: 1
+          }
+        })
+        return yield* Effect.promise(renderGraph)
+      }).pipe(Effect.scoped, Effect.provide(AudioLive.pipe(Layer.provide(layer))))
+      const reference = yield* render({ position: at(0, 0, -1) })
+      assert.closeTo(peak(rendered, 0) / peak(reference, 0), 0.5, 0.02)
     })
   )
 })
