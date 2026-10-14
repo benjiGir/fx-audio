@@ -36,8 +36,8 @@ export interface PromiseAudio extends PromiseGroup {
   load(url: string, signal?: AbortSignal): Promise<Sound>
   /** Every sound passes through it: Howler's global volume and mute. `play` and `playSprite` here play on it. */
   readonly master: PromiseGroup
-  /** A new group, routed through the master and released by `dispose`. */
-  createGroup(): PromiseGroup
+  /** The group called `name`, created on first use and routed through the master. The same name gives the same object. */
+  group(name: string): PromiseGroup
   dispose(): Promise<void>
 }
 
@@ -67,12 +67,20 @@ export const createAudio = (
   })
   const audio = runtime.runSync(Audio.use(Effect.succeed))
   const master = wrapGroup(audio.master)
+  const groups = new Map<string, PromiseGroup>()
   return {
     ...master,
     master,
     load: (url, signal) =>
       runtime.runPromise(audio.load(url), signal === undefined ? undefined : { signal }),
-    createGroup: () => wrapGroup(inScope(audio.makeGroup())),
+    group: (name) => {
+      let wrapped = groups.get(name)
+      if (wrapped === undefined) {
+        wrapped = wrapGroup(runtime.runSync(audio.group(name)))
+        groups.set(name, wrapped)
+      }
+      return wrapped
+    },
     dispose: async () => {
       await runtime.runPromise(Scope.close(scope, Exit.void))
       await runtime.dispose()

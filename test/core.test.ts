@@ -343,7 +343,7 @@ describe("Audio groups", () => {
     const { ctx, layer } = setup()
     return Effect.gen(function* () {
       const audio = yield* Audio
-      const group = yield* audio.makeGroup()
+      const group = yield* audio.group("music")
       yield* group.play(sound)
       yield* group.playSprite(sheet, "hit")
       const groupGain = gainAt(ctx, 1)
@@ -353,22 +353,78 @@ describe("Audio groups", () => {
     }).pipe(Effect.scoped, Effect.provide(layer))
   })
 
-  it.effect("releases the group's gain with its scope and keeps the master", () => {
+  it.effect("returns the same group for the same name and builds its gain once", () => {
     const { ctx, layer } = setup()
     return Effect.gen(function* () {
       const audio = yield* Audio
-      yield* audio.makeGroup().pipe(Effect.scoped)
-      const [master, groupGain] = ctx.gains
-      assert.strictEqual(groupGain?.disconnects, 1)
-      assert.strictEqual(master?.disconnects, 0)
-    }).pipe(Effect.provide(layer))
+      const first = yield* audio.group("music")
+      const again = yield* audio.group("music")
+      const other = yield* audio.group("sfx")
+      assert.strictEqual(again, first)
+      assert.notStrictEqual(other, first)
+      // The master's gain plus one per distinct name.
+      assert.strictEqual(ctx.gains.length, 3)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("builds one group when several fibers ask for the same name at once", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const groups = yield* Effect.all(
+        Array.from({ length: 20 }, () => audio.group("music")),
+        { concurrency: "unbounded" }
+      )
+      assert.isTrue(groups.every((group) => group === groups[0]))
+      assert.strictEqual(ctx.gains.length, 2)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("accepts any name, including ones that exist on Object.prototype", () => {
+    const { layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const first = yield* audio.group("toString")
+      assert.strictEqual(yield* audio.group("toString"), first)
+      assert.notStrictEqual(yield* audio.group(""), first)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("keeps a group alive after the scope that created it closes", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const group = yield* audio.group("music")
+      yield* Effect.scoped(group.play(sound))
+      assert.strictEqual(gainAt(ctx, 1).disconnects, 0)
+      // Still usable: the voice created now connects to the same gain.
+      yield* group.play(sound)
+      assert.deepStrictEqual(gainAt(ctx, 3).connections, [gainAt(ctx, 1)])
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("releases every group's gain and the master's with the layer", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          const audio = yield* Audio
+          yield* audio.group("music")
+          yield* audio.group("sfx")
+        }).pipe(Effect.provide(layer))
+      )
+      assert.deepStrictEqual(
+        ctx.gains.map((gain) => gain.disconnects),
+        [1, 1, 1]
+      )
+    })
   })
 
   it.effect("setVolume replaces any scheduled change at the current time", () => {
     const { ctx, layer } = setup()
     return Effect.gen(function* () {
       const audio = yield* Audio
-      const group = yield* audio.makeGroup()
+      const group = yield* audio.group("music")
       yield* group.setVolume(0.3)
       assert.deepStrictEqual(ctx.gains[1]?.gain.calls, [
         { kind: "cancel", value: Number.NaN, time: 5 },
@@ -381,7 +437,7 @@ describe("Audio groups", () => {
     const { ctx, layer } = setup()
     return Effect.gen(function* () {
       const audio = yield* Audio
-      const group = yield* audio.makeGroup()
+      const group = yield* audio.group("music")
       yield* group.setVolume(0.6)
       yield* group.mute
       yield* group.mute
@@ -395,7 +451,7 @@ describe("Audio groups", () => {
     const { ctx, layer } = setup()
     return Effect.gen(function* () {
       const audio = yield* Audio
-      const group = yield* audio.makeGroup()
+      const group = yield* audio.group("music")
       yield* group.mute
       const before = ctx.gains[1]?.gain.calls.length
       yield* group.setVolume(0.9)
@@ -409,7 +465,7 @@ describe("Audio groups", () => {
     const { ctx, layer } = setup()
     return Effect.gen(function* () {
       const audio = yield* Audio
-      const group = yield* audio.makeGroup()
+      const group = yield* audio.group("music")
       yield* group.fadeTo(0, Duration.seconds(2))
       assert.deepStrictEqual(ctx.gains[1]?.gain.calls, [
         { kind: "cancel", value: Number.NaN, time: 5 },
@@ -423,7 +479,7 @@ describe("Audio groups", () => {
     const { ctx, layer } = setup()
     return Effect.gen(function* () {
       const audio = yield* Audio
-      const group = yield* audio.makeGroup()
+      const group = yield* audio.group("music")
       yield* group.mute
       const before = ctx.gains[1]?.gain.calls.length
       yield* group.fadeTo(0.4, Duration.seconds(1))
@@ -437,7 +493,7 @@ describe("Audio groups", () => {
     const { ctx, layer } = setup()
     return Effect.gen(function* () {
       const audio = yield* Audio
-      const group = yield* audio.makeGroup()
+      const group = yield* audio.group("music")
       const exits = yield* Effect.all([
         Effect.exit(group.setVolume(-1)),
         Effect.exit(group.setVolume(Number.NaN)),

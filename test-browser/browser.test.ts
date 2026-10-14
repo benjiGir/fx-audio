@@ -184,7 +184,7 @@ describe("groups on a real engine (offline render)", () => {
       const rendered = yield* run((audio) =>
         Effect.gen(function* () {
           const sound = yield* audio.decode(makeWav(0.2), "tone.wav")
-          const group = yield* audio.makeGroup()
+          const group = yield* audio.group("music")
           yield* group.setVolume(0.5)
           yield* group.play(sound, { volume: 0.5 })
         })
@@ -199,7 +199,7 @@ describe("groups on a real engine (offline render)", () => {
       const rendered = yield* run((audio) =>
         Effect.gen(function* () {
           const sound = yield* audio.decode(makeWav(0.2), "tone.wav")
-          const group = yield* audio.makeGroup()
+          const group = yield* audio.group("music")
           yield* group.mute
           yield* group.play(sound)
         })
@@ -213,7 +213,7 @@ describe("groups on a real engine (offline render)", () => {
       const rendered = yield* run((audio) =>
         Effect.gen(function* () {
           const sound = yield* audio.decode(makeWav(0.2), "tone.wav")
-          const group = yield* audio.makeGroup()
+          const group = yield* audio.group("music")
           yield* audio.master.setVolume(0.5)
           yield* group.setVolume(0.5)
           yield* group.play(sound)

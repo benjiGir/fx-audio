@@ -5,7 +5,8 @@ import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Ref from "effect/Ref"
 import * as Schema from "effect/Schema"
-import type * as Scope from "effect/Scope"
+import * as Scope from "effect/Scope"
+import * as Semaphore from "effect/Semaphore"
 import type { AudioNodeLike } from "./context.ts"
 import { AudioContextService, BrowserAudioContextLive } from "./context.ts"
 import {
@@ -69,8 +70,11 @@ export class Audio extends Context.Service<
     ): Effect.Effect<Voice, UnknownSprite, Scope.Scope>
     /** The group every other group and every plain `play` ends up in: Howler's global volume and mute. */
     readonly master: Group
-    /** A new group, routed through the master. Its gain node is released when the surrounding `Scope` closes. */
-    makeGroup(): Effect.Effect<Group, never, Scope.Scope>
+    /**
+     * The group called `name`, created on first use and routed through the master.
+     * Asking for the same name again returns the same group. Groups are released with the layer.
+     */
+    group(name: string): Effect.Effect<Group>
   }
 >()("fx-audio/Audio") {}
 
@@ -251,8 +255,20 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
 
     const { group: master, node: masterNode } = yield* buildGroup(ctx.destination)
 
-    const makeGroup = Effect.fn("Audio.makeGroup")(function* () {
-      return (yield* buildGroup(masterNode)).group
+    // Groups live as long as the layer, whichever scope first asks for them.
+    const layerScope = yield* Effect.scope
+    const groups = new Map<string, Group>()
+    const creating = yield* Semaphore.make(1)
+    const group = Effect.fn("Audio.group")(function* (name: string) {
+      return yield* Effect.gen(function* () {
+        const existing = groups.get(name)
+        if (existing !== undefined) return existing
+        const { group } = yield* buildGroup(masterNode).pipe(
+          Effect.provideService(Scope.Scope, layerScope)
+        )
+        groups.set(name, group)
+        return group
+      }).pipe(Semaphore.withPermit(creating))
     })
 
     return Audio.of({
@@ -261,7 +277,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       play: master.play,
       playSprite: master.playSprite,
       master,
-      makeGroup
+      group
     })
   })
 )
