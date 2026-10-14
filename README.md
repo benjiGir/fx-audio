@@ -28,10 +28,15 @@ Import Effect modules by subpath (`effect/Effect`), never from the `effect` barr
 pnpm install
 pnpm lint
 pnpm typecheck
-pnpm coverage     # coverage thresholds: 95%
+pnpm coverage     # unit tests, coverage thresholds: 95%
+pnpm test:browser # real browsers through Playwright (all three engines by default)
 pnpm build
 pnpm check:package
 ```
+
+Browser tests run on Chromium, Firefox and WebKit. Sound is rendered with an `OfflineAudioContext`, so no output device is needed. Locally, install them with
+`pnpm exec playwright install`, or restrict the run with `FX_BROWSERS=chromium`
+(and `CHROMIUM_PATH` to use an existing Chromium binary).
 
 ## License
 
