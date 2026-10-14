@@ -2,10 +2,9 @@ import type * as Duration from "effect/Duration"
 import type * as Effect from "effect/Effect"
 import type * as Layer from "effect/Layer"
 import type * as Scope from "effect/Scope"
-import { describe, expectTypeOf, it } from "vitest"
+import { assert, describe, expectTypeOf, it } from "vitest"
 import type {
   AudioContextLike,
-  AudioContextService,
   DecodeFailure,
   Group,
   Listener,
@@ -22,7 +21,7 @@ import type {
   Vector3,
   Voice
 } from "../src/index.ts"
-import { type Audio, AudioBrowserLive, AudioLive } from "../src/index.ts"
+import { Audio, AudioBrowserLive, AudioContextService, AudioLive } from "../src/index.ts"
 import type { PromiseAudio, PromiseGroup, PromiseVoice } from "../src/promise.ts"
 import { createAudio, createAudioAsync } from "../src/promise.ts"
 
@@ -83,6 +82,11 @@ describe("public API types", () => {
     expectTypeOf<Service["listener"]>().toEqualTypeOf<Listener>()
     expectTypeOf<Service["resume"]>().toEqualTypeOf<Effect.Effect<void>>()
     expectTypeOf<typeof Audio>().toHaveProperty("use")
+  })
+
+  it("service keys are stable, they identify the services in a user's layers", () => {
+    assert.strictEqual(Audio.key, "fx-audio/Audio")
+    assert.strictEqual(AudioContextService.key, "fx-audio/AudioContext")
   })
 
   it("platform service", () => {

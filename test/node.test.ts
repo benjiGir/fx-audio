@@ -6,7 +6,7 @@ import { assert, describe, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import { afterAll } from "vitest"
-import { Audio, AudioLive } from "../src/index.ts"
+import { Audio, AudioContextService, AudioLive } from "../src/index.ts"
 import { NodeAudioContextLive } from "../src/node.ts"
 import { createAudio, createAudioAsync } from "../src/promise.ts"
 import { makeWav } from "./helpers/wav.ts"
@@ -107,6 +107,20 @@ describe("loading from disk under Node", () => {
       const error = yield* Effect.flip(audio.load(text))
       assert.include(["DecodeFailure", "UnsupportedFormat"], error.reason._tag)
     }).pipe(Effect.provide(nodeAudio))
+  )
+
+  it.live("gives up on a read whose signal is already aborted", () =>
+    Effect.gen(function* () {
+      const { readFile } = yield* AudioContextService
+      assert.isDefined(readFile)
+      const error = yield* Effect.flip(
+        Effect.tryPromise({
+          try: () => readFile?.(wav, AbortSignal.abort()) ?? Promise.resolve(wav),
+          catch: (e) => e
+        })
+      )
+      assert.strictEqual((error as Error).name, "AbortError")
+    }).pipe(Effect.provide(NodeAudioContextLive({ silent: true })))
   )
 
   it("loads and plays a file through the promise facade", async () => {

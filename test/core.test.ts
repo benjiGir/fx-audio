@@ -152,6 +152,7 @@ describe("Audio.load", () => {
     }
 
     const sources = [
+      ["a path with a colon in a folder name", "./sounds/take:2/a.wav"],
       ["a file: URL", "file:///sounds/a.wav"],
       ["an absolute path", "/sounds/a.wav"],
       ["a relative path", "./sounds/a.wav"],
