@@ -35,6 +35,6 @@ Chromium 141, Linux VM with 4 vCPUs, 2026-10-14 (two runs, the second one shown)
 | play with volume and rate | 40 µs (38 to 48) | 38 µs (36 to 40) |
 | play with stereo pan | 77 µs (76 to 81) | 52 µs (49 to 52) |
 
-Reading: plain playback costs the same within the noise (the first run gave 33 against 38 µs), setting volume and rate too, and a stereo pan is about a third cheaper in fx-audio, because the panner is created with the voice instead of after it. All of these are around one hundredth of an audio render quantum (2.7 ms): neither library is a bottleneck.
+Reading: plain playback costs the same within the noise (the first run gave 33 against 38 µs), setting volume and rate too, and a stereo pan is about a third cheaper in fx-audio, because Howler adds the panner after the voice has started and then pauses and restarts the voice (`setupPanner` in `howler.js`), while fx-audio builds the panner with the voice. All of these are around one hundredth of an audio render quantum (2.7 ms): neither library is a bottleneck.
 
 Limits: one engine. Firefox and WebKit are covered by the cost test in `test-browser/browser.test.ts` (fx-audio alone, on an offline context), but a real-time context needs a sound card, which CI machines do not have. The numbers come from a shared VM, so compare the two columns with each other and not with another machine.
