@@ -4,6 +4,7 @@ export type {
   AudioNodeLike,
   AudioParamLike,
   GainNodeLike,
+  MediaElementLike,
   PannerNodeLike,
   SourceNodeLike,
   StereoPannerNodeLike
@@ -15,6 +16,8 @@ export {
   DecodeFailure,
   LoadError,
   NetworkFailure,
+  PlaybackBlocked,
+  StreamingUnavailable,
   UnknownSprite,
   UnsupportedFormat
 } from "./errors.ts"

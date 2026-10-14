@@ -45,6 +45,29 @@ describe("BrowserAudioContextLive", () => {
   )
 })
 
+describe("the media element of BrowserAudioContextLive", () => {
+  it.effect("is a new Audio element for every stream", () => {
+    stubAudioContext()
+    const made: Array<unknown> = []
+    vi.stubGlobal(
+      "Audio",
+      class {
+        constructor() {
+          made.push(this)
+        }
+      }
+    )
+    return Effect.gen(function* () {
+      const { createMediaElement } = yield* AudioContextService
+      assert.isDefined(createMediaElement)
+      const first = createMediaElement?.()
+      const second = createMediaElement?.()
+      assert.deepStrictEqual(made, [first, second])
+      assert.notStrictEqual(first, second)
+    }).pipe(Effect.provide(BrowserAudioContextLive), Effect.scoped)
+  })
+})
+
 describe("resuming on a user gesture", () => {
   /** A context that starts suspended, and a document that is a bare event target. */
   const setup = (resume: () => Promise<void>) => {

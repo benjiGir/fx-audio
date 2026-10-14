@@ -34,6 +34,11 @@ export interface PromiseGroup {
   play(sound: Sound, options?: unknown): PromiseVoice
   /** Throws an `UnknownSprite` when the sheet does not define `name`, and a `SchemaError` on invalid options. */
   playSprite(sheet: SpriteSheet, name: string, options?: unknown): PromiseVoice
+  /**
+   * Play a long sound while it downloads. Rejects with a `LoadError`, or with `PlaybackBlocked`
+   * before a user gesture, and throws a `SchemaError` on invalid options.
+   */
+  stream(url: string, options?: unknown): Promise<PromiseVoice>
   /** Throws a `SchemaError` on a negative or non-finite volume. */
   setVolume(volume: number): void
   /** Linear fade, `seconds` long. Throws a `SchemaError` on a negative or non-finite volume. */
@@ -70,12 +75,18 @@ export const createAudio = (
     setPan: (pan) => runtime.runSync(voice.setPan(pan)),
     setPosition: (position) => runtime.runSync(voice.setPosition(position))
   })
+  const withScope = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>) =>
+    effect.pipe(Effect.provideService(Scope.Scope, scope))
   const inScope = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>) =>
-    runtime.runSync(effect.pipe(Effect.provideService(Scope.Scope, scope)))
+    runtime.runSync(withScope(effect))
   const wrapGroup = (group: Group): PromiseGroup => ({
     play: (sound, options) => wrap(inScope(group.play(sound, decodeOptions(options ?? {})))),
     playSprite: (sheet, name, options) =>
       wrap(inScope(group.playSprite(sheet, name, decodeOptions(options ?? {})))),
+    stream: async (url, options) => {
+      const decoded = decodeOptions(options ?? {})
+      return wrap(await runtime.runPromise(withScope(group.stream(url, decoded))))
+    },
     setVolume: (volume) => runtime.runSync(group.setVolume(volume)),
     fadeTo: (volume, seconds) => runtime.runSync(group.fadeTo(volume, `${seconds} seconds`)),
     mute: () => runtime.runSync(group.mute),

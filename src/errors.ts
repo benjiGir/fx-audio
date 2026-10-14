@@ -19,6 +19,12 @@ export class UnsupportedFormat extends Schema.TaggedError<UnsupportedFormat>()(
   }
 ) {}
 
+/** This platform has no media element to stream with, as under Node. */
+export class StreamingUnavailable extends Schema.TaggedError<StreamingUnavailable>()(
+  "StreamingUnavailable",
+  {}
+) {}
+
 /** `playSprite` was asked for a segment the sprite sheet does not define. */
 export class UnknownSprite extends Schema.TaggedError<UnknownSprite>()("UnknownSprite", {
   name: Schema.String,
@@ -31,5 +37,14 @@ export class UnknownSprite extends Schema.TaggedError<UnknownSprite>()("UnknownS
  */
 export class LoadError extends Schema.TaggedError<LoadError>()("LoadError", {
   source: Schema.String,
-  reason: Schema.Union([NetworkFailure, DecodeFailure, UnsupportedFormat])
+  reason: Schema.Union([NetworkFailure, DecodeFailure, UnsupportedFormat, StreamingUnavailable])
+}) {}
+
+/**
+ * The browser refused to start a stream because the page has not seen a user gesture yet.
+ * Catch it, then call `stream` again from a click or key handler.
+ */
+export class PlaybackBlocked extends Schema.TaggedError<PlaybackBlocked>()("PlaybackBlocked", {
+  source: Schema.String,
+  cause: Schema.Defect()
 }) {}

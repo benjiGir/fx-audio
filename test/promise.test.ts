@@ -110,6 +110,64 @@ describe("promise facade", () => {
     await audio.dispose()
   })
 
+  describe("stream", () => {
+    const setupStream = () => {
+      const ctx = makeFakeContext()
+      return {
+        ctx,
+        audio: createAudio(
+          FakeAudioContextLive(ctx, { createMediaElement: ctx.createMediaElement })
+        )
+      }
+    }
+    const canPlay = async (ctx: ReturnType<typeof makeFakeContext>) => {
+      await Promise.resolve()
+      ctx.elements[0]?.emit("canplay")
+    }
+
+    it("resolves with a usable voice once the browser can play", async () => {
+      const { ctx, audio } = setupStream()
+      const pending = audio.stream("https://x/music.mp3", { volume: 0.5 })
+      await canPlay(ctx)
+      const voice = await pending
+      assert.strictEqual(ctx.elements[0]?.plays, 1)
+      voice.setPan(0.3)
+      assert.strictEqual(ctx.panners[0]?.pan.value, 0.3)
+      voice.stop()
+      assert.strictEqual(ctx.elements[0]?.pauses, 1)
+      await voice.ended
+      await audio.dispose()
+    })
+
+    it("streams on a group", async () => {
+      const { ctx, audio } = setupStream()
+      const pending = audio.group("music").stream("https://x/music.mp3")
+      await canPlay(ctx)
+      await pending
+      assert.strictEqual(ctx.elements.length, 1)
+      await audio.dispose()
+    })
+
+    it("rejects with a typed LoadError", async () => {
+      const { ctx, audio } = setupStream()
+      const pending = audio.stream("https://x/music.mp3").catch((e: unknown) => e)
+      await Promise.resolve()
+      ctx.elements[0]?.emit("error")
+      assert.instanceOf(await pending, LoadError)
+      await audio.dispose()
+    })
+
+    it("rejects on invalid options before building an element", async () => {
+      const { ctx, audio } = setupStream()
+      const error = await audio
+        .stream("https://x/music.mp3", { volume: -1 })
+        .catch((e: unknown) => e)
+      assert.isDefined(error)
+      assert.strictEqual(ctx.elements.length, 0)
+      await audio.dispose()
+    })
+  })
+
   it("throws on invalid play options before touching the engine", async () => {
     const { ctx, audio } = setup()
     assert.throws(() =>
