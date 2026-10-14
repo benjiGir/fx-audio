@@ -1,5 +1,5 @@
 import { afterEach, assert, describe, it, vi } from "vitest"
-import { LoadError, Sound } from "../src/index.ts"
+import { LoadError, Sound, SpriteSegment, SpriteSheet, UnknownSprite } from "../src/index.ts"
 import { createAudio } from "../src/promise.ts"
 import { FakeAudioContextLive, makeFakeContext } from "../src/testing.ts"
 
@@ -72,5 +72,38 @@ describe("promise facade", () => {
     audio.play(new Sound({ buffer, source: "a.wav" }))
     await audio.dispose()
     assert.strictEqual(ctx.sources[0]?.disconnects, 1)
+  })
+
+  describe("playSprite", () => {
+    const sound = new Sound({ buffer, source: "fx.wav" })
+    const sheet = new SpriteSheet({
+      sound,
+      segments: { hit: new SpriteSegment({ start: 500, duration: 1000 }) }
+    })
+
+    it("plays one segment and returns a usable voice", async () => {
+      const { ctx, audio } = setup()
+      const voice = audio.playSprite(sheet, "hit", { volume: 0.3 })
+      assert.deepStrictEqual(ctx.sources[0]?.startCalls, [{ when: 0, offset: 0.5, duration: 1 }])
+      assert.strictEqual(ctx.gains[0]?.gain.value, 0.3)
+      voice.stop()
+      ctx.sources[0]?.end()
+      await voice.ended
+      await audio.dispose()
+    })
+
+    it("throws UnknownSprite for a name the sheet does not define", async () => {
+      const { ctx, audio } = setup()
+      assert.throws(() => audio.playSprite(sheet, "nope"), UnknownSprite)
+      assert.strictEqual(ctx.sources.length, 0)
+      await audio.dispose()
+    })
+
+    it("throws on invalid options before touching the engine", async () => {
+      const { ctx, audio } = setup()
+      assert.throws(() => audio.playSprite(sheet, "hit", { rate: 0 }))
+      assert.strictEqual(ctx.sources.length, 0)
+      await audio.dispose()
+    })
   })
 })

@@ -19,6 +19,12 @@ export class UnsupportedFormat extends Schema.TaggedError<UnsupportedFormat>()(
   }
 ) {}
 
+/** `playSprite` was asked for a segment the sprite sheet does not define. */
+export class UnknownSprite extends Schema.TaggedError<UnknownSprite>()("UnknownSprite", {
+  name: Schema.String,
+  available: Schema.Array(Schema.String)
+}) {}
+
 /**
  * Every failure of loading a sound. The `reason` is itself a tagged error, so
  * callers can recover with `Effect.catchReason("LoadError", "NetworkFailure", ...)`.

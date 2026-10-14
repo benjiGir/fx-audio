@@ -21,6 +21,8 @@ export interface SourceNodeLike extends AudioNodeLike {
   buffer: AudioBuffer | null
   playbackRate: AudioParamLike
   loop: boolean
+  loopStart: number
+  loopEnd: number
   onended: ((event: unknown) => void) | null
   start(when?: number, offset?: number, duration?: number): void
   stop(when?: number): void
