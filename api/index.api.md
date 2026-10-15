@@ -236,6 +236,11 @@ export class LoadError extends LoadError_base {}
 export class LoopChanged extends LoopChanged_base {}
 
 // @public
+export const makeSoundBank: (sounds: ReadonlyArray<Sound>, options?: {
+    readonly order?: "random" | "cycle";
+}) => SoundBank;
+
+// @public
 export interface MediaElementLike {
     // (undocumented)
     addEventListener(type: "canplay" | "ended" | "error", listener: () => void): void;
@@ -324,6 +329,12 @@ export class Seeked extends Seeked_base {}
 
 // @public
 export class Sound extends Sound_base {}
+
+// @public
+export interface SoundBank {
+    next(): Sound;
+    readonly size: number;
+}
 
 // @public (undocumented)
 export interface SourceNodeLike extends AudioNodeLike {

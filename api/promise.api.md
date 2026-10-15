@@ -15,6 +15,11 @@ export const createAudio: (platform?: Layer.Layer<AudioContextService>) => Promi
 export const createAudioAsync: (platform: Layer.Layer<AudioContextService>) => Promise<PromiseAudio>;
 
 // @public
+export const makeSoundBank: (sounds: ReadonlyArray<Sound>, options?: {
+    readonly order?: "random" | "cycle";
+}) => SoundBank;
+
+// @public
 export interface PromiseAnalyser {
     level(): number;
     peak(): number;
@@ -88,6 +93,12 @@ export interface PromiseVoice {
     setVolume(volume: number): void;
     // (undocumented)
     stop(): void;
+}
+
+// @public
+export interface SoundBank {
+    next(): Sound;
+    readonly size: number;
 }
 
 // (No @packageDocumentation comment for this package)

@@ -236,6 +236,22 @@ interface EffectNodes {
   readonly nodes: ReadonlyArray<AudioNodeLike>
 }
 
+/** A random factor between `1 - amount` and `1 + amount`. */
+const spread = (amount: number) => 1 + (Math.random() * 2 - 1) * amount
+
+/** The options with the speed and the volume of this play picked at random, when it asks for variation. */
+const varied = (options: PlayOptions): PlayOptions => {
+  const { rateVariation, volumeVariation } = options
+  if (rateVariation === undefined && volumeVariation === undefined) return options
+  return {
+    ...options,
+    ...(rateVariation === undefined ? {} : { rate: (options.rate ?? 1) * spread(rateVariation) }),
+    ...(volumeVariation === undefined
+      ? {}
+      : { volume: (options.volume ?? 1) * spread(volumeVariation) })
+  }
+}
+
 /** Adds a stop function to a group's set of playing voices, and returns the way to remove it. */
 type Tracker = (stop: () => void) => () => void
 
@@ -894,11 +910,12 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
 
     const startVoice = Effect.fnUntraced(function* (
       sound: Sound,
-      options: PlayOptions,
+      requested: PlayOptions,
       segment: SpriteSegment | undefined,
       output: AudioNodeLike,
       track: Tracker
     ): Effect.fn.Return<Voice, never, Scope.Scope> {
+      const options = varied(requested)
       const ended = yield* Deferred.make<void>()
       const bus = voiceBus(ended, track)
       const {
@@ -942,13 +959,14 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
 
     const startStream = Effect.fnUntraced(function* (
       url: string,
-      options: PlayOptions,
+      requested: PlayOptions,
       output: AudioNodeLike,
       track: Tracker
     ): Effect.fn.Return<Voice, LoadError | PlaybackBlocked, Scope.Scope> {
       if (createMediaElement === undefined) {
         return yield* new LoadError({ source: url, reason: new StreamingUnavailable() })
       }
+      const options = varied(requested)
       const ended = yield* Deferred.make<void>()
       const bus = voiceBus(ended, track)
       const onEnded = () => bus.finish(new Ended())
