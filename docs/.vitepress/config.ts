@@ -45,10 +45,13 @@ export default defineConfig({
             { text: "Streaming", link: "/guide/streaming" },
             { text: "Autoplay policy", link: "/guide/autoplay" },
             { text: "Node", link: "/guide/node" },
+            { text: "Using Effect", link: "/guide/effect" },
+            { text: "Testing your code", link: "/guide/testing" },
             { text: "Errors", link: "/guide/errors" },
             { text: "Codecs", link: "/guide/codecs" }
           ]
         },
+        { text: "Benchmark", items: [{ text: "Against Howler.js", link: "/guide/benchmark" }] },
         { text: "Reference", items: [{ text: "API reference", link: "/api/" }] },
         { text: "Project", items: [{ text: "Contributing", link: "/contributing" }] }
       ]
