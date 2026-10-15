@@ -10,7 +10,7 @@
 Audio library for the browser and Node, built on [Effect](https://effect.website).
 It aims to replace Howler.js with a smaller, faster, fully typed and thoroughly tested core.
 
-> Status: pre-alpha. The API is not stable yet.
+> Status: stable (1.0). The public API follows [Semantic Versioning](https://semver.org); see the [changelog](CHANGELOG.md).
 
 Documentation: <https://benjigir.github.io/fx-audio/>
 

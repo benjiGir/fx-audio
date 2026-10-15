@@ -1,8 +1,27 @@
 {
   "name": "fx-audio",
-  "version": "0.0.0",
+  "version": "1.0.0",
   "description": "Audio library for the browser and Node, built on Effect. Meant to replace Howler.js.",
   "license": "MIT",
+  "author": "Benjamin Girard",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/benjiGir/fx-audio.git"
+  },
+  "homepage": "https://benjigir.github.io/fx-audio/",
+  "bugs": {
+    "url": "https://github.com/benjiGir/fx-audio/issues"
+  },
+  "keywords": [
+    "audio",
+    "web-audio",
+    "howler",
+    "effect",
+    "sound",
+    "typescript",
+    "react",
+    "node"
+  ],
   "type": "module",
   "sideEffects": false,
   "engines": {
@@ -10,7 +29,8 @@
   },
   "packageManager": "pnpm@10.28.0",
   "files": [
-    "dist"
+    "dist",
+    "CHANGELOG.md"
   ],
   "exports": {
     ".": {
@@ -53,7 +73,10 @@
     "docs:dev": "typedoc && vitepress dev docs",
     "docs:build": "typedoc && vitepress build docs",
     "docs:preview": "vitepress preview docs",
-    "docs:api": "typedoc"
+    "docs:api": "typedoc",
+    "changeset": "changeset",
+    "changeset:version": "changeset version",
+    "release:notes": "node scripts/release-notes.mjs"
   },
   "peerDependencies": {
     "effect": "^4.0.4",
@@ -70,6 +93,7 @@
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "0.18.5",
+    "@changesets/cli": "3.0.3",
     "@effect/vitest": "4.0.4",
     "@microsoft/api-extractor": "7.59.4",
     "@stryker-mutator/core": "10.0.0",
