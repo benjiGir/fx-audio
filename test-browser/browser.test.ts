@@ -194,6 +194,30 @@ describe("the audio graph on a real engine (offline render)", () => {
     )
   })
 
+  it.live("a delayed voice renders silence until its time, then the sound", () => {
+    const { layer, render } = makeOfflineContext(0.5)
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const sound = yield* audio.decode(makeWav(0.2), "tone.wav")
+      yield* audio.play(sound, { volume: 0.5, delay: 250 })
+      const rendered = yield* Effect.promise(render)
+      const data = rendered.getChannelData(0)
+      const window = (from: number, to: number) => {
+        let max = 0
+        for (let i = Math.round(from * 44100); i < Math.round(to * 44100); i++) {
+          max = Math.max(max, Math.abs(data[i] ?? 0))
+        }
+        return max
+      }
+      assert.isBelow(window(0, 0.24), 0.001)
+      assert.isAbove(window(0.26, 0.45), 0.05)
+    }).pipe(
+      Effect.scoped,
+      Effect.timeout("10 seconds"),
+      Effect.provide(AudioLive.pipe(Layer.provide(layer)))
+    )
+  })
+
   it.live("a paused voice renders silence and does not end, a resumed one plays", () => {
     const { layer, render } = makeOfflineContext(0.3)
     return Effect.gen(function* () {

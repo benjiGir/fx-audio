@@ -318,6 +318,11 @@ export class Audio extends Context.Service<
      * Does nothing on a running context.
      */
     readonly resume: Effect.Effect<void>
+    /**
+     * The audio clock, in milliseconds. It runs only while the context does, and is the time
+     * `PlayOptions.startAt` is counted on: `now + 500` is half a second from now.
+     */
+    readonly now: Effect.Effect<number>
   }
   // Stryker disable next-line StringLiteral: the service key is only an identifier.
 >()("fx-audio/Audio") {}
@@ -495,6 +500,12 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
 
     type Chain = ReturnType<typeof buildChain>
 
+    /** The time on the audio clock, in seconds, a voice with these options starts at. */
+    const startOf = (options: PlayOptions) =>
+      options.startAt === undefined
+        ? ctx.currentTime + (options.delay ?? 0) / 1000
+        : options.startAt / 1000
+
     /**
      * A buffer source plays once and cannot be paused or moved, so pausing drops it and
      * resuming or seeking starts a new one at the wanted point, all on the same chain.
@@ -514,14 +525,15 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       let loop = options.loop ?? segment?.loop ?? false
       let rate = options.rate ?? 1
       let paused = false
-      // Where in the sound, and when on the audio clock, the current source started.
+      // Where in the sound, and when on the audio clock, the current source started. The time
+      // is ahead of the clock for a voice that waits to start.
       let offset = 0
       let anchor = 0
       let current: SourceNodeLike | undefined
 
       const position = () => {
         if (paused) return offset
-        const reached = offset + (ctx.currentTime - anchor) * rate
+        const reached = offset + Math.max(0, ctx.currentTime - anchor) * rate
         return loop ? reached % length : Math.min(reached, length)
       }
       const detach = () => {
@@ -536,7 +548,9 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
         }
         source.disconnect()
       }
-      const launch = (from: number) => {
+      // The time a source launched now starts: the one still ahead for a voice that waits.
+      const startTime = () => Math.max(anchor, ctx.currentTime)
+      const launch = (from: number, when = ctx.currentTime) => {
         const source = ctx.createBufferSource()
         source.buffer = sound.buffer
         source.loop = loop
@@ -548,21 +562,23 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
           finish()
         }
         offset = from
-        anchor = ctx.currentTime
+        anchor = when
         current = source
+        // Zero is "now" to Web Audio, as is any time already past.
+        const at = when > ctx.currentTime ? when : 0
         if (segment === undefined) {
-          if (from === 0) source.start()
-          else source.start(0, from)
+          if (from === 0 && at === 0) source.start()
+          else source.start(at, from)
         } else if (loop) {
           // A looping source plays until stopped, so the segment bounds the loop instead.
           source.loopStart = base
           source.loopEnd = base + length
-          source.start(0, base + from)
+          source.start(at, base + from)
         } else {
-          source.start(0, base + from, length - from)
+          source.start(at, base + from, length - from)
         }
       }
-      launch(0)
+      launch(0, startOf(options))
       return {
         pause: () => {
           offset = position()
@@ -583,15 +599,16 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
           if (paused) {
             offset = at
           } else {
+            const when = startTime()
             detach()
-            launch(at)
+            launch(at, when)
           }
         },
         position,
         paused: () => paused,
         setRate: (next) => {
           // Count the time run at the old rate before the new one takes over.
-          if (!paused) {
+          if (!paused && ctx.currentTime >= anchor) {
             offset = position()
             anchor = ctx.currentTime
           }
@@ -603,8 +620,9 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
           const at = position()
           loop = next
           if (paused) return
+          const when = startTime()
           detach()
-          launch(at)
+          launch(at, when)
         },
         stop: detach
       }
@@ -991,7 +1009,8 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       master,
       group,
       listener: listenerService,
-      resume: Effect.promise(() => ctx.resume())
+      resume: Effect.promise(() => ctx.resume()),
+      now: Effect.sync(() => ctx.currentTime * 1000)
     })
   })
 )

@@ -68,7 +68,17 @@ export class PlayOptions extends Schema.Class<PlayOptions>("fx-audio/PlayOptions
   pan: Schema.optionalKey(Pan),
   spatial: Schema.optionalKey(SpatialOptions),
   rate: Schema.optionalKey(Rate),
-  loop: Schema.optionalKey(Schema.Boolean)
+  loop: Schema.optionalKey(Schema.Boolean),
+  /**
+   * Start this many milliseconds from now, counted on the audio clock, so voices that are started
+   * together with the same `delay` stay in step. Sounds only: a stream starts at once.
+   */
+  delay: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+  /**
+   * Start at this time on the audio clock, in milliseconds, as `audio.now` reports it. A time already
+   * past starts at once. It wins over `delay`. Sounds only: a stream starts at once.
+   */
+  startAt: Schema.optionalKey(Schema.Finite)
 }) {}
 
 /** A named slice of one sound. `start` and `duration` are in milliseconds, as in Howler. */
