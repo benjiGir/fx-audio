@@ -13,8 +13,8 @@ which reads closest to Howler. Everything also exists in Effect form, see the [g
   `LoadError` instead of calling `onloaderror`. See [Errors](./errors).
 - **Groups exist.** Howler only has a global volume. fx-audio has named [groups](./groups) between your sounds and
   the master, so music and effects can each be turned down.
-- **Time units.** Sprite offsets and durations are in milliseconds, as in Howler. Fades on the promise facade take
-  seconds, where Howler's `fade` takes milliseconds.
+- **Time units.** Sprite offsets, durations and fades are in milliseconds, as in Howler. (In the Effect API, fades take a
+  `Duration`.)
 
 ## Playing a sound
 

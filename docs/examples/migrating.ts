@@ -29,7 +29,7 @@ export const fade = async () => {
   const sound = await audio.load("/sounds/theme.mp3")
   // #region fade
   const voice = audio.play(sound)
-  voice.fadeTo(0, 2) // from the current volume to 0, in seconds
+  voice.fadeTo(0, 2000) // from the current volume to 0, in milliseconds
   voice.stop()
   // #endregion fade
 }
@@ -38,7 +38,7 @@ export const groups = () => {
   // #region groups
   const music = audio.group("music")
   music.setVolume(0.4)
-  music.fadeTo(0, 2)
+  music.fadeTo(0, 2000)
   music.mute()
 
   audio.master.setVolume(0.5) // Howler.volume(0.5)

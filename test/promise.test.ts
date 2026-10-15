@@ -61,7 +61,7 @@ describe("promise facade", () => {
   it("plays, fades, stops and resolves ended", async () => {
     const { ctx, audio } = setup()
     const voice = audio.play(new Sound({ buffer, source: "a.wav" }), { volume: 0.5 })
-    voice.fadeTo(0, 1.5)
+    voice.fadeTo(0, 1500)
     assert.deepStrictEqual(voiceGains(ctx)[0]?.gain.calls.at(-1), {
       kind: "ramp",
       value: 0,
@@ -249,7 +249,7 @@ describe("promise facade groups", () => {
     const group = audio.group("music")
     group.setVolume(0.5)
     assert.deepStrictEqual(ctx.gains[1]?.gain.calls.at(-1), { kind: "set", value: 0.5, time: 2 })
-    group.fadeTo(0, 1.5)
+    group.fadeTo(0, 1500)
     assert.deepStrictEqual(ctx.gains[1]?.gain.calls.at(-1), { kind: "ramp", value: 0, time: 3.5 })
     group.setVolume(0.6)
     group.mute()
@@ -265,7 +265,7 @@ describe("promise facade groups", () => {
     const { audio } = setup()
     const group = audio.group("music")
     assert.throws(() => group.setVolume(-1))
-    assert.throws(() => group.fadeTo(Number.NaN, 1))
+    assert.throws(() => group.fadeTo(Number.NaN, 1000))
     await audio.dispose()
   })
 
@@ -288,7 +288,7 @@ describe("promise facade groups", () => {
     audio.setVolume(0.4)
     audio.mute()
     audio.unmute()
-    audio.fadeTo(1, 1)
+    audio.fadeTo(1, 1000)
     audio.play(sound)
     const master = gainAt(ctx, 0)
     assert.strictEqual(master.gain.calls.find((call) => call.kind === "set")?.value, 0.2)
