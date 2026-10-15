@@ -7,7 +7,7 @@ import { Extractor, ExtractorConfig } from "@microsoft/api-extractor"
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..")
 const update = process.argv.includes("--update")
-const entries = ["index", "node", "promise", "testing"]
+const entries = ["index", "node", "promise", "react", "testing"]
 
 let failed = false
 for (const entry of entries) {

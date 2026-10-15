@@ -1,6 +1,12 @@
 {
   "$schema": "https://typedoc.org/schema.json",
-  "entryPoints": ["src/index.ts", "src/node.ts", "src/promise.ts", "src/testing.ts"],
+  "entryPoints": [
+    "src/index.ts",
+    "src/node.ts",
+    "src/promise.ts",
+    "src/react.ts",
+    "src/testing.ts"
+  ],
   "tsconfig": "tsconfig.json",
   "plugin": ["typedoc-plugin-markdown", "typedoc-vitepress-theme", "./scripts/typedoc-plugin.mjs"],
   "out": "docs/api",

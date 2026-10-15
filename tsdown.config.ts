@@ -5,6 +5,7 @@ export default defineConfig({
     index: "src/index.ts",
     node: "src/node.ts",
     promise: "src/promise.ts",
+    react: "src/react.ts",
     testing: "src/testing.ts"
   },
   format: "esm",
@@ -12,5 +13,5 @@ export default defineConfig({
   dts: true,
   clean: true,
   target: "es2022",
-  deps: { neverBundle: [/^effect(\/|$)/, "node-web-audio-api"] }
+  deps: { neverBundle: [/^effect(\/|$)/, "node-web-audio-api", "react"] }
 })

@@ -24,6 +24,8 @@ import type {
 import { Audio, AudioBrowserLive, AudioContextService, AudioLive } from "../src/index.ts"
 import type { PromiseAudio, PromiseGroup, PromiseVoice } from "../src/promise.ts"
 import { createAudio, createAudioAsync } from "../src/promise.ts"
+import type { SoundState } from "../src/react.ts"
+import { useAudio, useGroup, useSound } from "../src/react.ts"
 
 // The compiler checks these, `pnpm typecheck` fails when a public signature moves.
 // `pnpm api` freezes the full surface; these pin the parts users write code against.
@@ -137,5 +139,15 @@ describe("public API types", () => {
       (url: string, options?: unknown) => Promise<PromiseVoice>
     >()
     expectTypeOf<PromiseVoice["ended"]>().toEqualTypeOf<Promise<void>>()
+  })
+
+  it("react hooks", () => {
+    expectTypeOf(useAudio).toEqualTypeOf<() => PromiseAudio>()
+    expectTypeOf(useGroup).toEqualTypeOf<(name: string) => PromiseGroup>()
+    expectTypeOf(useSound).toEqualTypeOf<(url: string) => SoundState>()
+    expectTypeOf<SoundState["status"]>().toEqualTypeOf<"loading" | "ready" | "error">()
+    expectTypeOf<SoundState["play"]>().toEqualTypeOf<
+      (options?: unknown) => PromiseVoice | undefined
+    >()
   })
 })
