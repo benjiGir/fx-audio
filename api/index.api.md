@@ -10,6 +10,7 @@ import * as Effect from 'effect/Effect';
 import * as Layer from 'effect/Layer';
 import * as Schema from 'effect/Schema';
 import * as Scope from 'effect/Scope';
+import * as Stream from 'effect/Stream';
 import { YieldableError } from 'effect/Cause';
 
 // @public
@@ -105,6 +106,9 @@ export const BrowserAudioContextLive: Layer.Layer<AudioContextService>;
 // @public
 export class DecodeFailure extends DecodeFailure_base {}
 
+// @public
+export class Ended extends Ended_base {}
+
 // @public (undocumented)
 export interface GainNodeLike extends AudioNodeLike {
     // (undocumented)
@@ -132,6 +136,9 @@ export interface Listener {
 
 // @public
 export class LoadError extends LoadError_base {}
+
+// @public
+export class LoopChanged extends LoopChanged_base {}
 
 // @public
 export interface MediaElementLike {
@@ -200,10 +207,22 @@ export interface PannerNodeLike extends AudioNodeLike {
 }
 
 // @public
+export class Paused extends Paused_base {}
+
+// @public
 export class PlaybackBlocked extends PlaybackBlocked_base {}
 
 // @public
 export class PlayOptions extends PlayOptions_base {}
+
+// @public
+export class RateChanged extends RateChanged_base {}
+
+// @public
+export class Resumed extends Resumed_base {}
+
+// @public
+export class Seeked extends Seeked_base {}
 
 // @public
 export class Sound extends Sound_base {}
@@ -244,6 +263,9 @@ export interface StereoPannerNodeLike extends AudioNodeLike {
 }
 
 // @public
+export class Stopped extends Stopped_base {}
+
+// @public
 export class StreamingUnavailable extends StreamingUnavailable_base {}
 
 // @public
@@ -258,6 +280,7 @@ export class Vector3 extends Vector3_base {}
 // @public (undocumented)
 export interface Voice {
     readonly ended: Effect.Effect<void>;
+    readonly events: Stream.Stream<VoiceEvent>;
     readonly fadeTo: (volume: number, over: Duration.Input) => Effect.Effect<void>;
     readonly pause: Effect.Effect<void>;
     readonly paused: Effect.Effect<boolean>;
@@ -272,6 +295,15 @@ export interface Voice {
     // (undocumented)
     readonly stop: Effect.Effect<void>;
 }
+
+// @public
+export const VoiceEvent: Schema.Union<readonly [typeof Paused, typeof Resumed, typeof Seeked, typeof RateChanged, typeof VolumeChanged, typeof LoopChanged, typeof Stopped, typeof Ended]>;
+
+// @public (undocumented)
+export type VoiceEvent = typeof VoiceEvent.Type;
+
+// @public
+export class VolumeChanged extends VolumeChanged_base {}
 
 // (No @packageDocumentation comment for this package)
 

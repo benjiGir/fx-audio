@@ -351,4 +351,59 @@ describe("promise facade on an asynchronous platform layer", () => {
     assert.throws(() => voice.setRate(0))
     await audio.dispose()
   })
+
+  it("on listens to one kind of event until the returned function is called", async () => {
+    const { audio } = setup()
+    const sound = new Sound({ buffer: { duration: 4 } as AudioBuffer, source: "a.wav" })
+    const voice = audio.play(sound)
+    const paused: Array<string> = []
+    const seeks: Array<number> = []
+    const stopListening = voice.on("pause", (event) => paused.push(event._tag))
+    voice.on("seek", (event) => seeks.push(event.position))
+    voice.pause()
+    await voice.resume()
+    voice.seek(1500)
+    stopListening()
+    voice.pause()
+    assert.deepStrictEqual(paused, ["pause"])
+    assert.deepStrictEqual(seeks, [1500])
+    await audio.dispose()
+  })
+
+  it("on reports the end of the voice", async () => {
+    const { audio } = setup()
+    const sound = new Sound({ buffer: { duration: 4 } as AudioBuffer, source: "a.wav" })
+    const voice = audio.play(sound)
+    let ended = 0
+    voice.on("end", () => ended++)
+    voice.on("stop", () => ended--)
+    voice.seek(9000)
+    await voice.ended
+    assert.strictEqual(ended, 1)
+    await audio.dispose()
+  })
+
+  it("a listener that throws is rethrown outside and does not stop the others", async () => {
+    const { audio } = setup()
+    const sound = new Sound({ buffer: { duration: 4 } as AudioBuffer, source: "a.wav" })
+    const voice = audio.play(sound)
+    const rethrown: Array<unknown> = []
+    vi.stubGlobal("queueMicrotask", (task: () => void) => {
+      try {
+        task()
+      } catch (error) {
+        rethrown.push(error)
+      }
+    })
+    let heard = 0
+    voice.on("rate", () => {
+      throw new Error("boom")
+    })
+    voice.on("rate", () => heard++)
+    voice.setRate(2)
+    voice.setRate(3)
+    assert.strictEqual(heard, 2)
+    assert.lengthOf(rethrown, 2)
+    await audio.dispose()
+  })
 })

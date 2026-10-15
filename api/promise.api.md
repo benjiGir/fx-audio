@@ -53,6 +53,9 @@ export interface PromiseVoice {
     readonly ended: Promise<void>;
     // (undocumented)
     fadeTo(volume: number, milliseconds: number): void;
+    on<Type extends VoiceEvent["_tag"]>(type: Type, listener: (event: Extract<VoiceEvent, {
+        readonly _tag: Type;
+    }>) => void): () => void;
     pause(): void;
     // (undocumented)
     paused(): boolean;

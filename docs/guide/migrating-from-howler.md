@@ -77,6 +77,16 @@ Every voice ends up in the master, so `audio.master` is Howler's global volume a
 
 Times are in milliseconds, where Howler's `seek` takes seconds. See [Controlling a voice](./voices).
 
+## Events
+
+| Howler | fx-audio |
+| --- | --- |
+| `sound.on("load")`, `sound.on("loaderror")` | `await audio.load(url)` resolves or rejects with a `LoadError` |
+| `sound.on("play")` | `audio.play` returns the voice at once, and `voice.on("resume")` when it carries on after a pause |
+| `sound.on("pause" \| "stop" \| "seek" \| "rate" \| "volume", fn, id)` | `voice.on("pause" \| "stop" \| "seek" \| "rate" \| "volume", fn)`, or `voice.events` with Effect |
+| `sound.on("end", fn, id)` | `voice.on("end", fn)` or `await voice.ended`. `end` here comes once, when the voice is over, not at each loop pass |
+| `sound.off(event, fn)` | The function `on` returns |
+
 ## Stereo and 3D
 
 | Howler | fx-audio |
@@ -117,5 +127,5 @@ any other voice. It cannot start before the user's first gesture, see [Streaming
 
 These Howler features have no fx-audio equivalent today:
 
-- the `load`, `play`, `pause` and other events (`await voice.ended` covers `end`);
+- the `fade`, `mute` and `unlock` events;
 - `Howler.stop()` to stop every sound at once, and `sound.unload()` for one sound.

@@ -10,16 +10,27 @@ import * as Layer from "effect/Layer"
 import * as ManagedRuntime from "effect/ManagedRuntime"
 import * as Schema from "effect/Schema"
 import * as Scope from "effect/Scope"
+import * as Stream from "effect/Stream"
 import type { AudioContextService } from "./context.ts"
 import { BrowserAudioContextLive } from "./context.ts"
 import type { Group, Listener, Voice } from "./core.ts"
 import { Audio, AudioLive } from "./core.ts"
-import type { Sound, SpriteSheet, Vector3 } from "./model.ts"
+import type { Sound, SpriteSheet, Vector3, VoiceEvent } from "./model.ts"
 import { PlayOptions } from "./model.ts"
 
 /** Promise facade for users who do not use Effect. Same engine, no Effect types. */
 export interface PromiseVoice {
   readonly ended: Promise<void>
+  /**
+   * Call `listener` each time the voice sends an event of this type, from now on: `pause`, `resume`,
+   * `seek`, `rate`, `volume`, `loop`, `stop` or `end`. Returns a function that stops listening.
+   * A listener that throws does not stop the others or the voice: the error is rethrown outside,
+   * where the page reports it.
+   */
+  on<Type extends VoiceEvent["_tag"]>(
+    type: Type,
+    listener: (event: Extract<VoiceEvent, { readonly _tag: Type }>) => void
+  ): () => void
   stop(): void
   /** Hold the voice where it is. */
   pause(): void
@@ -140,6 +151,23 @@ const facade = (
 ): PromiseAudio => {
   const wrap = (voice: Voice): PromiseVoice => ({
     ended: runtime.runPromise(voice.ended),
+    on: (type, listener) => {
+      const fiber = runtime.runFork(
+        Stream.runForEach(voice.events, (event) =>
+          Effect.sync(() => {
+            if (event._tag !== type) return
+            try {
+              listener(event as never)
+            } catch (error) {
+              queueMicrotask(() => {
+                throw error
+              })
+            }
+          })
+        )
+      )
+      return () => fiber.interruptUnsafe()
+    },
     stop: () => runtime.runSync(voice.stop),
     pause: () => runtime.runSync(voice.pause),
     resume: () => runtime.runPromise(voice.resume),
