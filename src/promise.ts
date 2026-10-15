@@ -21,7 +21,7 @@ import { PlayOptions } from "./model.ts"
 export interface PromiseVoice {
   readonly ended: Promise<void>
   stop(): void
-  fadeTo(volume: number, seconds: number): void
+  fadeTo(volume: number, milliseconds: number): void
   /** Throws a `SchemaError` outside -1 (left) to 1 (right). */
   setPan(pan: number): void
   /** Move the voice in 3D space. Throws a `SchemaError` on a non-finite coordinate. */
@@ -47,8 +47,8 @@ export interface PromiseGroup {
   stream(url: string, options?: unknown): Promise<PromiseVoice>
   /** Throws a `SchemaError` on a negative or non-finite volume. */
   setVolume(volume: number): void
-  /** Linear fade, `seconds` long. Throws a `SchemaError` on a negative or non-finite volume. */
-  fadeTo(volume: number, seconds: number): void
+  /** Linear fade, `milliseconds` long. Throws a `SchemaError` on a negative or non-finite volume. */
+  fadeTo(volume: number, milliseconds: number): void
   mute(): void
   unmute(): void
 }
@@ -127,7 +127,8 @@ const facade = (
   const wrap = (voice: Voice): PromiseVoice => ({
     ended: runtime.runPromise(voice.ended),
     stop: () => runtime.runSync(voice.stop),
-    fadeTo: (volume, seconds) => runtime.runSync(voice.fadeTo(volume, `${seconds} seconds`)),
+    fadeTo: (volume, milliseconds) =>
+      runtime.runSync(voice.fadeTo(volume, `${milliseconds} millis`)),
     setPan: (pan) => runtime.runSync(voice.setPan(pan)),
     setPosition: (position) => runtime.runSync(voice.setPosition(position))
   })
@@ -144,7 +145,8 @@ const facade = (
       return wrap(await runtime.runPromise(withScope(group.stream(url, decoded))))
     },
     setVolume: (volume) => runtime.runSync(group.setVolume(volume)),
-    fadeTo: (volume, seconds) => runtime.runSync(group.fadeTo(volume, `${seconds} seconds`)),
+    fadeTo: (volume, milliseconds) =>
+      runtime.runSync(group.fadeTo(volume, `${milliseconds} millis`)),
     mute: () => runtime.runSync(group.mute),
     unmute: () => runtime.runSync(group.unmute)
   })

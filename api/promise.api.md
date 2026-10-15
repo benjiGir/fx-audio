@@ -28,7 +28,7 @@ export interface PromiseAudio extends PromiseGroup {
 
 // @public
 export interface PromiseGroup {
-    fadeTo(volume: number, seconds: number): void;
+    fadeTo(volume: number, milliseconds: number): void;
     // (undocumented)
     mute(): void;
     play(sound: Sound, options?: unknown): PromiseVoice;
@@ -52,7 +52,7 @@ export interface PromiseVoice {
     // (undocumented)
     readonly ended: Promise<void>;
     // (undocumented)
-    fadeTo(volume: number, seconds: number): void;
+    fadeTo(volume: number, milliseconds: number): void;
     setPan(pan: number): void;
     setPosition(position: Vector3): void;
     // (undocumented)
