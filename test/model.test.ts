@@ -39,6 +39,16 @@ describe("PlayOptions", () => {
     assert.throws(() => decodeOptions({ pan: Number.NaN }))
   })
 
+  it("accepts a delay of zero or more and any start time, nothing else", () => {
+    assert.strictEqual(decodeOptions({ delay: 0 }).delay, 0)
+    assert.strictEqual(decodeOptions({ delay: 250 }).delay, 250)
+    assert.throws(() => decodeOptions({ delay: -1 }))
+    assert.throws(() => decodeOptions({ delay: Number.NaN }))
+    assert.strictEqual(decodeOptions({ startAt: 1500 }).startAt, 1500)
+    assert.strictEqual(decodeOptions({ startAt: 0 }).startAt, 0)
+    assert.throws(() => decodeOptions({ startAt: Number.POSITIVE_INFINITY }))
+  })
+
   it("validates when constructed", () => {
     assert.strictEqual(new PlayOptions({ volume: 0 }).volume, 0)
     assert.throws(() => new PlayOptions({ rate: -2 }))

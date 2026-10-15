@@ -23,6 +23,7 @@ export interface PromiseAudio extends PromiseGroup {
     // (undocumented)
     load(url: string, signal?: AbortSignal): Promise<Sound>;
     readonly master: PromiseGroup;
+    now(): number;
     resume(): Promise<void>;
 }
 

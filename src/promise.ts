@@ -88,6 +88,8 @@ export interface PromiseAudio extends PromiseGroup {
   group(name: string): PromiseGroup
   /** The listener spatial voices are heard from. */
   readonly listener: PromiseListener
+  /** The audio clock in milliseconds, the time `startAt` is counted on. It runs only while the context does. */
+  now(): number
   /** Resume a context the browser kept suspended. Call it from a user gesture; it also happens on the first click, key press or touch. */
   resume(): Promise<void>
   dispose(): Promise<void>
@@ -214,6 +216,7 @@ const facade = (
       setOrientation: (forward, up) => runtime.runSync(listener.setOrientation(forward, up))
     },
     resume: () => runtime.runPromise(audio.resume),
+    now: () => runtime.runSync(audio.now),
     load: (url, signal) =>
       // Stryker disable next-line ConditionalExpression: `{ signal: undefined }` behaves like no option.
       runtime.runPromise(audio.load(url), signal === undefined ? undefined : { signal }),

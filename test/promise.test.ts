@@ -107,6 +107,27 @@ describe("promise facade", () => {
     await audio.dispose()
   })
 
+  it("reports the audio clock in milliseconds", async () => {
+    const { ctx, audio } = setup()
+    assert.strictEqual(audio.now(), 0)
+    ctx.currentTime = 0.75
+    assert.strictEqual(audio.now(), 750)
+    await audio.dispose()
+  })
+
+  it("starts a voice later with delay and startAt", async () => {
+    const { ctx, audio } = setup()
+    vi.stubGlobal("fetch", () => Promise.resolve(new Response(new ArrayBuffer(4))))
+    const sound = await audio.load("https://x/hit.wav")
+    ctx.currentTime = 1
+    audio.play(sound, { delay: 500 })
+    audio.play(sound, { startAt: audio.now() + 2000 })
+    assert.strictEqual(ctx.sources[0]?.startCalls[0]?.when, 1.5)
+    assert.strictEqual(ctx.sources[1]?.startCalls[0]?.when, 3)
+    assert.throws(() => audio.play(sound, { delay: -1 }))
+    await audio.dispose()
+  })
+
   it("resumes the context", async () => {
     const { ctx, audio } = setup()
     await audio.resume()
