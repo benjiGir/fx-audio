@@ -11,6 +11,7 @@ pnpm api          # public API against the reports committed in api/ (pnpm api:u
 pnpm mutation     # mutation testing with Stryker, break threshold: 80% (about 12 minutes, not run in CI)
 pnpm build
 pnpm check:package
+pnpm changeset    # describe a change for the changelog (see Releasing)
 pnpm bench:size   # bundle size against Howler, see the benchmark page
 pnpm bench:play   # cost of play() against Howler, in a real Chromium
 pnpm docs:dev     # this site, with live reload (generates the API reference first)
@@ -47,3 +48,15 @@ reference. Add an `@example` to what deserves one. `pnpm docs:api` regenerates i
 TypeDoc reads the TypeScript compiler API, which TypeScript 7 does not ship, so `.pnpmfile.cjs` gives it TypeScript 5.9,
 as it does for Stryker. `scripts/typedoc-plugin.mjs` moves the members of Effect services onto their class and hides what
 classes inherit from Effect.
+
+## Releasing
+
+Versions follow [Semantic Versioning](https://semver.org), and the public API is frozen (see above), so a breaking change is a major version.
+
+1. Every pull request that changes what users get adds a changeset with `pnpm changeset`: pick patch, minor or major and write one line. The file in `.changeset/` is committed with the pull request.
+2. To release, run `pnpm changeset:version`. It consumes the changesets, bumps `package.json` and writes `CHANGELOG.md`.
+   Edit the new section of the changelog if it needs context: it is the body of the GitHub release. Preview it with `pnpm release:notes`.
+3. Run `pnpm mutation` by hand, then open a pull request with the version bump and merge it.
+4. Run the **Release** workflow (Actions tab) with the version. It checks `package.json`, creates the tag `vX.Y.Z` and the GitHub release with the changelog section as notes.
+
+Nothing publishes to npm yet: no workflow runs `changeset publish`, so a release is a tag and a GitHub release.
