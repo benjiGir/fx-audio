@@ -12,6 +12,7 @@ import type {
   AudioParamLike,
   MediaElementLike,
   PannerNodeLike,
+  SourceNodeLike,
   StereoPannerNodeLike
 } from "./context.ts"
 import { AudioContextService, BrowserAudioContextLive } from "./context.ts"
@@ -27,6 +28,8 @@ import {
 import {
   Pan,
   type PlayOptions,
+  Position,
+  Rate,
   Sound,
   SpatialOptions,
   type SpriteSegment,
@@ -39,6 +42,29 @@ export interface Voice {
   /** Completes when playback ends naturally, the voice is stopped or its scope closes. */
   readonly ended: Effect.Effect<void>
   readonly stop: Effect.Effect<void>
+  /** Hold the voice where it is. Pausing a paused voice does nothing, and `ended` stays pending. */
+  readonly pause: Effect.Effect<void>
+  /**
+   * Carry on from where `pause` left the voice. Fails with `PlaybackBlocked` only for a streamed
+   * voice the browser refuses to restart. Does nothing on a voice that is not paused.
+   */
+  readonly resume: Effect.Effect<void, PlaybackBlocked>
+  /**
+   * Jump to `milliseconds` from the start of the sound (of the segment, for a sprite), playing or
+   * paused. Past the end, a looping voice wraps around and any other voice ends. Dies on a negative or
+   * non-finite time.
+   */
+  readonly seek: (milliseconds: number) => Effect.Effect<void>
+  /** Where the voice is, in milliseconds from the start of the sound (of the segment, for a sprite). */
+  readonly position: Effect.Effect<number>
+  /** Whether `pause` holds the voice right now. */
+  readonly paused: Effect.Effect<boolean>
+  /** Set the volume at once, cancelling a fade in progress. Dies on a negative or non-finite volume. */
+  readonly setVolume: (volume: number) => Effect.Effect<void>
+  /** Change the playback speed while the voice plays: one is normal, two is twice as fast. Dies on a rate that is not above zero. */
+  readonly setRate: (rate: number) => Effect.Effect<void>
+  /** Turn looping on or off while the voice plays. */
+  readonly setLoop: (loop: boolean) => Effect.Effect<void>
   /** Linear fade of this voice's gain, scheduled on the audio thread. */
   readonly fadeTo: (volume: number, over: Duration.Input) => Effect.Effect<void>
   /**
@@ -105,6 +131,8 @@ const isLocalFile = (source: string) => source.startsWith("file:") || !hasScheme
 
 const decodeVolume = Schema.decodeUnknownSync(Volume)
 const decodePan = Schema.decodeUnknownSync(Pan)
+const decodeRate = Schema.decodeUnknownSync(Rate)
+const decodePosition = Schema.decodeUnknownSync(Position)
 const decodeVector = Schema.decodeUnknownSync(Vector3)
 
 const setVector = (
@@ -114,6 +142,19 @@ const setVector = (
   params[0].value = x
   params[1].value = y
   params[2].value = z
+}
+
+/** What differs between a voice on a decoded buffer and one on a media element. Times are in seconds. */
+interface Player {
+  readonly pause: () => void
+  readonly resume: Effect.Effect<void, PlaybackBlocked>
+  readonly seek: (seconds: number) => void
+  readonly position: () => number
+  readonly paused: () => boolean
+  readonly setRate: (rate: number) => void
+  readonly setLoop: (loop: boolean) => void
+  /** Silence the underlying source for good. */
+  readonly stop: () => void
 }
 
 /**
@@ -259,40 +300,51 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
 
     /**
      * What every voice has after its source: [stereo] -> [spatial] -> gain -> output,
-     * and the controls that act on those nodes. The source node is the caller's.
+     * and the controls that act on those nodes. The source node comes later, from `setInput`,
+     * and may be replaced as many times as the voice is paused or sought.
      */
-    const buildChain = (input: AudioNodeLike, options: PlayOptions, output: AudioNodeLike) => {
+    const buildChain = (options: PlayOptions, output: AudioNodeLike) => {
       const gain = ctx.createGain()
       // The optional stages between the source and the gain, in signal order.
       const route: { stereo?: StereoPannerNodeLike; spatial?: PannerNodeLike } = {}
-      // source -> [stereo] -> [spatial] -> gain: a stage is only built for voices that ask for one.
-      const wire = () => {
-        let from: AudioNodeLike = input
+      let input: AudioNodeLike | undefined
+      // stage -> stage -> gain: a stage is only built for voices that ask for one.
+      const link = () => {
+        let from: AudioNodeLike | undefined
         for (const stage of [route.stereo, route.spatial]) {
           if (stage === undefined) continue
-          from.connect(stage)
+          from?.connect(stage)
           from = stage
         }
-        from.connect(gain)
+        from?.connect(gain)
       }
+      const feed = () => input?.connect(route.stereo ?? route.spatial ?? gain)
       // Adding a stage means breaking the links of the nodes already chained, then chaining again.
       const rewire = () => {
-        input.disconnect()
+        input?.disconnect()
         route.stereo?.disconnect()
         route.spatial?.disconnect()
-        wire()
+        link()
+        feed()
       }
       gain.gain.value = options.volume ?? 1
       if (options.pan !== undefined) route.stereo = createStereo(options.pan)
       if (options.spatial !== undefined) route.spatial = createSpatial(options.spatial)
-      wire()
+      link()
       gain.connect(output)
-      const controls: Pick<Voice, "fadeTo" | "setPan" | "setPosition"> = {
+      const controls: Pick<Voice, "fadeTo" | "setVolume" | "setPan" | "setPosition"> = {
         fadeTo: (volume, over) =>
           Effect.sync(() => {
             const now = ctx.currentTime
             gain.gain.setValueAtTime(gain.gain.value, now)
             gain.gain.linearRampToValueAtTime(volume, now + Duration.toSeconds(over))
+          }),
+        setVolume: (requested) =>
+          Effect.sync(() => {
+            const volume = decodeVolume(requested)
+            const now = ctx.currentTime
+            gain.gain.cancelScheduledValues(now)
+            gain.gain.setValueAtTime(volume, now)
           }),
         setPan: (requested) =>
           Effect.sync(() => {
@@ -316,12 +368,161 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
             }
           })
       }
+      const setInput = (next: AudioNodeLike) => {
+        input = next
+        feed()
+      }
       const release = () => {
         route.stereo?.disconnect()
         route.spatial?.disconnect()
         gain.disconnect()
       }
-      return { controls, release }
+      return { controls, setInput, release }
+    }
+
+    type Chain = ReturnType<typeof buildChain>
+
+    /**
+     * A buffer source plays once and cannot be paused or moved, so pausing drops it and
+     * resuming or seeking starts a new one at the wanted point, all on the same chain.
+     * The position is worked out from the audio clock: where the voice was started from,
+     * when, and how fast it has run since.
+     */
+    const bufferPlayer = (
+      sound: Sound,
+      options: PlayOptions,
+      segment: SpriteSegment | undefined,
+      chain: Chain,
+      finish: () => void
+    ): Player => {
+      // The Web Audio API counts in seconds, sprite segments in milliseconds.
+      const base = segment === undefined ? 0 : segment.start / 1000
+      const length = segment === undefined ? sound.buffer.duration : segment.duration / 1000
+      let loop = options.loop ?? segment?.loop ?? false
+      let rate = options.rate ?? 1
+      let paused = false
+      // Where in the sound, and when on the audio clock, the current source started.
+      let offset = 0
+      let anchor = 0
+      let current: SourceNodeLike | undefined
+
+      const position = () => {
+        if (paused) return offset
+        const reached = offset + (ctx.currentTime - anchor) * rate
+        return loop ? reached % length : Math.min(reached, length)
+      }
+      const detach = () => {
+        if (current === undefined) return
+        const source = current
+        current = undefined
+        source.onended = null
+        try {
+          source.stop()
+        } catch {
+          // already stopped
+        }
+        source.disconnect()
+      }
+      const launch = (from: number) => {
+        const source = ctx.createBufferSource()
+        source.buffer = sound.buffer
+        source.loop = loop
+        source.playbackRate.value = rate
+        chain.setInput(source)
+        source.onended = finish
+        offset = from
+        anchor = ctx.currentTime
+        current = source
+        if (segment === undefined) {
+          if (from === 0) source.start()
+          else source.start(0, from)
+        } else if (loop) {
+          // A looping source plays until stopped, so the segment bounds the loop instead.
+          source.loopStart = base
+          source.loopEnd = base + length
+          source.start(0, base + from)
+        } else {
+          source.start(0, base + from, length - from)
+        }
+      }
+      launch(0)
+      return {
+        pause: () => {
+          if (paused) return
+          offset = position()
+          paused = true
+          detach()
+        },
+        resume: Effect.sync(() => {
+          if (!paused) return
+          paused = false
+          launch(offset)
+        }),
+        seek: (seconds) => {
+          if (!loop && seconds >= length) {
+            detach()
+            finish()
+            return
+          }
+          const at = loop ? seconds % length : seconds
+          if (paused) {
+            offset = at
+          } else {
+            detach()
+            launch(at)
+          }
+        },
+        position,
+        paused: () => paused,
+        setRate: (next) => {
+          // Count the time run at the old rate before the new one takes over.
+          if (!paused) {
+            offset = position()
+            anchor = ctx.currentTime
+          }
+          rate = next
+          if (current !== undefined) current.playbackRate.value = next
+        },
+        setLoop: (next) => {
+          if (next === loop) return
+          const at = position()
+          loop = next
+          if (paused) return
+          detach()
+          launch(at)
+        },
+        stop: detach
+      }
+    }
+
+    const makeVoice = (ended: Deferred.Deferred<void>, chain: Chain, player: Player): Voice => {
+      const alive = () => !Deferred.isDoneUnsafe(ended)
+      // Once a voice has ended nothing is left to pause, move or restart.
+      const whileAlive = (act: () => void) =>
+        Effect.sync(() => {
+          if (alive()) act()
+        })
+      return {
+        ended: Deferred.await(ended),
+        stop: Effect.suspend(() => {
+          player.stop()
+          return Deferred.succeed(ended, undefined)
+        }).pipe(Effect.asVoid),
+        pause: whileAlive(player.pause),
+        resume: Effect.suspend(() => (alive() ? player.resume : Effect.void)),
+        seek: (milliseconds) => {
+          const seconds = decodePosition(milliseconds) / 1000
+          return whileAlive(() => player.seek(seconds))
+        },
+        position: Effect.sync(() => player.position() * 1000),
+        paused: Effect.sync(player.paused),
+        setRate: (requested) => {
+          const rate = decodeRate(requested)
+          return whileAlive(() => player.setRate(rate))
+        },
+        setLoop: (loop) => whileAlive(() => player.setLoop(loop)),
+        ...chain.controls
+      }
     }
 
     const startVoice = Effect.fnUntraced(function* (
@@ -331,51 +532,22 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       output: AudioNodeLike
     ): Effect.fn.Return<Voice, never, Scope.Scope> {
       const ended = yield* Deferred.make<void>()
-      const { source, chain } = yield* Effect.acquireRelease(
+      const { player, chain } = yield* Effect.acquireRelease(
         Effect.sync(() => {
-          const source = ctx.createBufferSource()
-          source.buffer = sound.buffer
-          source.loop = options.loop ?? segment?.loop ?? false
-          if (options.rate !== undefined) source.playbackRate.value = options.rate
-          const chain = buildChain(source, options, output)
-          source.onended = () => Deferred.doneUnsafe(ended, Effect.void)
-          if (segment === undefined) {
-            source.start()
-          } else {
-            // The Web Audio API counts in seconds, sprite segments in milliseconds.
-            const start = segment.start / 1000
-            const duration = segment.duration / 1000
-            if (source.loop) {
-              // A looping source plays until stopped, so the segment bounds the loop instead.
-              source.loopStart = start
-              source.loopEnd = start + duration
-              source.start(0, start)
-            } else {
-              source.start(0, start, duration)
-            }
-          }
-          return { source, chain }
+          const chain = buildChain(options, output)
+          const player = bufferPlayer(sound, options, segment, chain, () =>
+            Deferred.doneUnsafe(ended, Effect.void)
+          )
+          return { player, chain }
         }),
-        ({ source, chain }) =>
+        ({ player, chain }) =>
           Effect.suspend(() => {
-            source.onended = null
-            try {
-              source.stop()
-            } catch {
-              // already stopped
-            }
-            source.disconnect()
+            player.stop()
             chain.release()
             return Deferred.succeed(ended, undefined)
           })
       )
-      return {
-        ended: Deferred.await(ended),
-        stop: Effect.sync(() => {
-          source.stop()
-        }),
-        ...chain.controls
-      }
+      return makeVoice(ended, chain, player)
     })
 
     /** The browser's own mapping of `MediaError.code`; a missing or aborted error counts as the network. */
@@ -402,11 +574,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       const onEnded = () => Deferred.doneUnsafe(ended, Effect.void)
       // Released as soon as the stream fails or is interrupted, not only when the scope closes.
       let released = false
-      const release = (
-        element: MediaElementLike,
-        source: AudioNodeLike,
-        chain: { release(): void }
-      ) =>
+      const release = (element: MediaElementLike, source: AudioNodeLike, chain: Chain) =>
         Effect.suspend(() => {
           if (released) return Effect.void
           released = true
@@ -428,7 +596,8 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
           element.loop = options.loop ?? false
           if (options.rate !== undefined) element.playbackRate = options.rate
           const source = ctx.createMediaElementSource(element)
-          const chain = buildChain(source, options, output)
+          const chain = buildChain(options, output)
+          chain.setInput(source)
           element.addEventListener("ended", onEnded)
           return { element, source, chain }
         }),
@@ -460,14 +629,41 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
         ),
         Effect.onError(() => release(element, source, chain))
       )
-      return {
-        ended: Deferred.await(ended),
-        stop: Effect.suspend(() => {
+      let paused = false
+      const player: Player = {
+        pause: () => {
+          if (paused) return
           element.pause()
-          return Deferred.succeed(ended, undefined)
-        }).pipe(Effect.asVoid),
-        ...chain.controls
+          paused = true
+        },
+        resume: Effect.suspend(() =>
+          paused
+            ? Effect.tryPromise({
+                try: () => element.play(),
+                catch: (cause) => new PlaybackBlocked({ source: url, cause })
+              }).pipe(
+                Effect.andThen(
+                  Effect.sync(() => {
+                    paused = false
+                  })
+                )
+              )
+            : Effect.void
+        ),
+        seek: (seconds) => {
+          element.currentTime = seconds
+        },
+        position: () => element.currentTime,
+        paused: () => paused,
+        setRate: (rate) => {
+          element.playbackRate = rate
+        },
+        setLoop: (loop) => {
+          element.loop = loop
+        },
+        stop: () => element.pause()
       }
+      return makeVoice(ended, chain, player)
     })
 
     const spriteOn = (output: AudioNodeLike) =>

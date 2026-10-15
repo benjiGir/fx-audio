@@ -56,6 +56,7 @@ export default defineConfig({
           text: "Guides",
           items: [
             { text: "Sprites", link: "/guide/sprites" },
+            { text: "Controlling a voice", link: "/guide/voices" },
             { text: "Groups and master", link: "/guide/groups" },
             { text: "Stereo pan", link: "/guide/pan" },
             { text: "3D position", link: "/guide/spatial" },

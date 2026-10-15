@@ -53,8 +53,18 @@ export interface PromiseVoice {
     readonly ended: Promise<void>;
     // (undocumented)
     fadeTo(volume: number, milliseconds: number): void;
+    pause(): void;
+    // (undocumented)
+    paused(): boolean;
+    position(): number;
+    resume(): Promise<void>;
+    seek(milliseconds: number): void;
+    // (undocumented)
+    setLoop(loop: boolean): void;
     setPan(pan: number): void;
     setPosition(position: Vector3): void;
+    setRate(rate: number): void;
+    setVolume(volume: number): void;
     // (undocumented)
     stop(): void;
 }

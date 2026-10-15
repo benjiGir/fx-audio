@@ -139,6 +139,7 @@ export interface MediaElementLike {
     addEventListener(type: "canplay" | "ended" | "error", listener: () => void): void;
     // (undocumented)
     crossOrigin: string | null;
+    currentTime: number;
     // (undocumented)
     readonly error: {
         readonly code: number;
@@ -258,8 +259,16 @@ export class Vector3 extends Vector3_base {}
 export interface Voice {
     readonly ended: Effect.Effect<void>;
     readonly fadeTo: (volume: number, over: Duration.Input) => Effect.Effect<void>;
+    readonly pause: Effect.Effect<void>;
+    readonly paused: Effect.Effect<boolean>;
+    readonly position: Effect.Effect<number>;
+    readonly resume: Effect.Effect<void, PlaybackBlocked>;
+    readonly seek: (milliseconds: number) => Effect.Effect<void>;
+    readonly setLoop: (loop: boolean) => Effect.Effect<void>;
     readonly setPan: (pan: number) => Effect.Effect<void>;
     readonly setPosition: (position: Vector3) => Effect.Effect<void>;
+    readonly setRate: (rate: number) => Effect.Effect<void>;
+    readonly setVolume: (volume: number) => Effect.Effect<void>;
     // (undocumented)
     readonly stop: Effect.Effect<void>;
 }

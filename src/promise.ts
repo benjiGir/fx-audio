@@ -21,6 +21,20 @@ import { PlayOptions } from "./model.ts"
 export interface PromiseVoice {
   readonly ended: Promise<void>
   stop(): void
+  /** Hold the voice where it is. */
+  pause(): void
+  /** Carry on after `pause`. Rejects with `PlaybackBlocked` only for a streamed voice the browser refuses to restart. */
+  resume(): Promise<void>
+  /** Jump to `milliseconds` from the start, playing or paused. Throws a `SchemaError` on a negative or non-finite time. */
+  seek(milliseconds: number): void
+  /** Where the voice is, in milliseconds from its start. */
+  position(): number
+  paused(): boolean
+  /** Set the volume at once. Throws a `SchemaError` on a negative or non-finite volume. */
+  setVolume(volume: number): void
+  /** Change the speed while playing. Throws a `SchemaError` on a rate that is not above zero. */
+  setRate(rate: number): void
+  setLoop(loop: boolean): void
   fadeTo(volume: number, milliseconds: number): void
   /** Throws a `SchemaError` outside -1 (left) to 1 (right). */
   setPan(pan: number): void
@@ -127,6 +141,14 @@ const facade = (
   const wrap = (voice: Voice): PromiseVoice => ({
     ended: runtime.runPromise(voice.ended),
     stop: () => runtime.runSync(voice.stop),
+    pause: () => runtime.runSync(voice.pause),
+    resume: () => runtime.runPromise(voice.resume),
+    seek: (milliseconds) => runtime.runSync(voice.seek(milliseconds)),
+    position: () => runtime.runSync(voice.position),
+    paused: () => runtime.runSync(voice.paused),
+    setVolume: (volume) => runtime.runSync(voice.setVolume(volume)),
+    setRate: (rate) => runtime.runSync(voice.setRate(rate)),
+    setLoop: (loop) => runtime.runSync(voice.setLoop(loop)),
     fadeTo: (volume, milliseconds) =>
       runtime.runSync(voice.fadeTo(volume, `${milliseconds} millis`)),
     setPan: (pan) => runtime.runSync(voice.setPan(pan)),

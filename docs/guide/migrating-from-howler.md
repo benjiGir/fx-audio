@@ -63,6 +63,20 @@ Howler.mute(true)
 
 Every voice ends up in the master, so `audio.master` is Howler's global volume and mute. See [Groups and master](./groups).
 
+## Pause, seek, rate and volume
+
+| Howler | fx-audio |
+| --- | --- |
+| `sound.pause(id)` / `sound.play(id)` | `voice.pause()` / `voice.resume()` |
+| `sound.seek(seconds, id)` | `voice.seek(milliseconds)` |
+| `sound.seek(id)` | `voice.position()`, in milliseconds |
+| `sound.rate(rate, id)` | `voice.setRate(rate)` |
+| `sound.volume(volume, id)` | `voice.setVolume(volume)` |
+| `sound.loop(loop, id)` | `voice.setLoop(loop)` |
+| `sound.playing(id)` | Not available. `voice.paused()` says if it is held, `voice.ended` when it is over |
+
+Times are in milliseconds, where Howler's `seek` takes seconds. See [Controlling a voice](./voices).
+
 ## Stereo and 3D
 
 | Howler | fx-audio |
@@ -98,13 +112,10 @@ any other voice. It cannot start before the user's first gesture, see [Streaming
 | `Howler.unload()` | `audio.dispose()`: stops every voice and releases the audio context. The facade cannot be used afterwards |
 | `Howler.autoUnlock` | Automatic on the first click, key press or touch; `audio.resume()` to do it yourself, see [Autoplay policy](./autoplay) |
 | `Howler.codecs(ext)` | Not available. Catch `UnsupportedFormat` instead |
-| `sound.loop(true)` | The `loop` option of `play`, set when the voice starts |
 
 ## Not available yet
 
 These Howler features have no fx-audio equivalent today:
 
-- pausing and resuming a voice, and `seek`;
-- changing the volume or the rate of a voice after it started (`fadeTo` changes the volume over time);
 - the `load`, `play`, `pause` and other events (`await voice.ended` covers `end`);
 - `Howler.stop()` to stop every sound at once, and `sound.unload()` for one sound.

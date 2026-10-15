@@ -227,6 +227,7 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
         preload: "",
         loop: false,
         playbackRate: 1,
+        currentTime: 0,
         error: null,
         plays: 0,
         pauses: 0,
