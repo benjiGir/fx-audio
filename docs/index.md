@@ -3,7 +3,7 @@ layout: home
 hero:
   name: fx-audio
   text: Audio for the browser and Node
-  tagline: Built on Effect. A smaller, fully typed and thoroughly tested replacement for Howler.js.
+  tagline: Built on Effect. A fully typed and thoroughly tested replacement for Howler.js.
   actions:
     - theme: brand
       text: Getting started
