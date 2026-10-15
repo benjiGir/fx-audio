@@ -29,6 +29,7 @@ export interface PromiseAudio extends PromiseGroup {
 
 // @public
 export interface PromiseGroup {
+    crossfade(out: PromiseVoice, sound: Sound, milliseconds: number, options?: unknown): PromiseVoice;
     fadeTo(volume: number, milliseconds: number): void;
     // (undocumented)
     mute(): void;
@@ -53,6 +54,7 @@ export interface PromiseListener {
 export interface PromiseVoice {
     // (undocumented)
     readonly ended: Promise<void>;
+    fadeOut(milliseconds: number): Promise<void>;
     // (undocumented)
     fadeTo(volume: number, milliseconds: number): void;
     on<Type extends VoiceEvent["_tag"]>(type: Type, listener: (event: Extract<VoiceEvent, {

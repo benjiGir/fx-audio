@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect"
 import * as Stream from "effect/Stream"
-import { Audio, type Sound } from "fx-audio"
+import { Audio, type Sound, type Voice } from "fx-audio"
 import { createAudio } from "fx-audio/promise"
 
 // #region effect
@@ -62,4 +62,27 @@ export const listen = async () => {
   voice.seek(30_000)
   stopListening()
   // #endregion events-promise
+}
+
+// #region crossfade-effect
+export const nextTrack = (current: Voice, next: Sound) =>
+  Effect.gen(function* () {
+    const audio = yield* Audio
+    // `next` fades in while `current` fades out and stops, three seconds for both.
+    return yield* audio.crossfade(current, next, 3000, { loop: true })
+  })
+// #endregion crossfade-effect
+
+export const crossfadePromise = async () => {
+  // #region crossfade-promise
+  const audio = createAudio()
+  const first = audio.play(await audio.load("/sounds/day.mp3"), { loop: true })
+
+  // Later, hand over to the night track.
+  const second = audio.crossfade(first, await audio.load("/sounds/night.mp3"), 3000, {
+    loop: true
+  })
+
+  await second.fadeOut(1000) // or simply fade a voice out and stop it
+  // #endregion crossfade-promise
 }
