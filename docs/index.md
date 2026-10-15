@@ -9,6 +9,9 @@ hero:
       text: Getting started
       link: /guide/getting-started
     - theme: alt
+      text: Try the playground
+      link: /playground
+    - theme: alt
       text: View on GitHub
       link: https://github.com/benjiGir/fx-audio
 features:
