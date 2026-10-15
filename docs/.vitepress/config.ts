@@ -35,7 +35,9 @@ export default defineConfig({
   transformPageData(pageData) {
     if (pageData.relativePath.startsWith("api/")) pageData.frontmatter.editLink = false
   },
+  head: [["link", { rel: "icon", type: "image/svg+xml", href: "/fx-audio/favicon.svg" }]],
   themeConfig: {
+    logo: { light: "/logo.svg", dark: "/logo-dark.svg", alt: "fx-audio" },
     nav: [
       { text: "Guide", link: "/guide/getting-started" },
       { text: "Playground", link: "/playground" },

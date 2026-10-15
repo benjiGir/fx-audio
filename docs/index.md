@@ -4,6 +4,10 @@ hero:
   name: fx-audio
   text: Audio for the browser and Node
   tagline: Built on Effect. A fully typed and thoroughly tested replacement for Howler.js.
+  image:
+    light: /logo.svg
+    dark: /logo-dark.svg
+    alt: The fx-audio logo, an f followed by an x made of two crossed patch cables
   actions:
     - theme: brand
       text: Getting started
