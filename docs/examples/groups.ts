@@ -20,3 +20,19 @@ export const program = (theme: Sound) =>
     yield* audio.stopAll // stop every voice there is
   })
 // #endregion groups
+
+// #region max-voices
+export const limited = (step: Sound) =>
+  Effect.gen(function* () {
+    const audio = yield* Audio
+    const sfx = yield* audio.group("sfx")
+
+    yield* sfx.setMaxVoices(8) // a ninth sound stops the oldest one
+    yield* sfx.play(step)
+
+    const playing = yield* sfx.voiceCount // voices in this group, paused ones too
+    const everywhere = yield* audio.voiceCount
+    const state = yield* audio.state // "running", "suspended", "interrupted" or "closed"
+    return { playing, everywhere, state }
+  })
+// #endregion max-voices

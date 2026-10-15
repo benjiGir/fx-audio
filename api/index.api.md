@@ -215,10 +215,12 @@ export interface Group {
     // (undocumented)
     readonly playSprite: (sheet: SpriteSheet, name: string, options?: PlayOptions) => Effect.Effect<Voice, UnknownSprite, Scope.Scope>;
     readonly setEffects: (effects: ReadonlyArray<AudioEffect>) => Effect.Effect<void>;
+    readonly setMaxVoices: (limit: number | undefined) => Effect.Effect<void>;
     readonly setVolume: (volume: number) => Effect.Effect<void>;
     readonly stopAll: Effect.Effect<void>;
     readonly stream: (url: string, options?: PlayOptions) => Effect.Effect<Voice, LoadError | PlaybackBlocked, Scope.Scope>;
     readonly unmute: Effect.Effect<void>;
+    readonly voiceCount: Effect.Effect<number>;
 }
 
 // @public
