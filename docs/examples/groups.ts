@@ -15,5 +15,8 @@ export const program = (theme: Sound) =>
     yield* music.unmute
 
     yield* audio.master.mute // silence everything
+
+    yield* music.stopAll // stop every voice in the group
+    yield* audio.stopAll // stop every voice there is
   })
 // #endregion groups

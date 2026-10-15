@@ -119,6 +119,8 @@ any other voice. It cannot start before the user's first gesture, see [Streaming
 
 | Howler | fx-audio |
 | --- | --- |
+| `Howler.stop()` | `audio.stopAll()`. A group has its own `stopAll`, see [Groups and master](./groups) |
+| `sound.unload()` | Nothing to call: a `Sound` is only decoded data, so drop your references and it is freed. `audio.dispose()` releases everything |
 | `Howler.unload()` | `audio.dispose()`: stops every voice and releases the audio context. The facade cannot be used afterwards |
 | `Howler.autoUnlock` | Automatic on the first click, key press or touch; `audio.resume()` to do it yourself, see [Autoplay policy](./autoplay) |
 | `Howler.codecs(ext)` | Not available. Catch `UnsupportedFormat` instead |
@@ -128,4 +130,3 @@ any other voice. It cannot start before the user's first gesture, see [Streaming
 These Howler features have no fx-audio equivalent today:
 
 - the `fade`, `mute` and `unlock` events;
-- `Howler.stop()` to stop every sound at once, and `sound.unload()` for one sound.
