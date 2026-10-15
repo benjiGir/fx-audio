@@ -6,10 +6,15 @@ import type * as Scope from "effect/Scope"
 import { server, userEvent } from "vitest/browser"
 import {
   Audio,
+  type AudioEffect,
   AudioContextService,
   AudioLive,
   BrowserAudioContextLive,
+  Compressor,
+  Echo,
+  Filter,
   LoadError,
+  Reverb,
   type Sound,
   SpriteSegment,
   SpriteSheet,
@@ -258,6 +263,79 @@ describe("the audio graph on a real engine (offline render)", () => {
         Effect.provide(AudioLive.pipe(Layer.provide(layer)))
       )
     }
+  )
+
+  /** The highest absolute sample of `data` between two times, in seconds. */
+  const loudest = (data: Float32Array, from: number, to: number) => {
+    let max = 0
+    for (let i = Math.round(from * 44100); i < Math.round(to * 44100); i++) {
+      max = Math.max(max, Math.abs(data[i] ?? 0))
+    }
+    return max
+  }
+
+  const renderWith = (effects: ReadonlyArray<AudioEffect>, seconds = 0.6) => {
+    const { layer, render } = makeOfflineContext(seconds)
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const sound = yield* audio.decode(makeWav(0.1), "tone.wav")
+      yield* audio.master.setEffects(effects)
+      yield* audio.play(sound)
+      return (yield* Effect.promise(render)).getChannelData(0)
+    }).pipe(
+      Effect.scoped,
+      Effect.timeout("10 seconds"),
+      Effect.provide(AudioLive.pipe(Layer.provide(layer)))
+    )
+  }
+
+  it.live("a lowpass filter removes a tone above its cutoff, a highpass one below", () =>
+    Effect.gen(function* () {
+      const plain = loudest(yield* renderWith([]), 0.02, 0.09)
+      const lowpassed = loudest(
+        yield* renderWith([new Filter({ type: "lowpass", frequency: 60 })]),
+        0.02,
+        0.09
+      )
+      const highpassed = loudest(
+        yield* renderWith([new Filter({ type: "highpass", frequency: 8000 })]),
+        0.02,
+        0.09
+      )
+      assert.isAbove(plain, 0.2)
+      assert.isBelow(lowpassed, plain / 10)
+      assert.isBelow(highpassed, plain / 10)
+    })
+  )
+
+  it.live("an echo repeats the sound after its time, and nothing is heard in between", () =>
+    Effect.gen(function* () {
+      const data = yield* renderWith([new Echo({ time: 300, feedback: 0, mix: 0.5 })])
+      assert.isAbove(loudest(data, 0.02, 0.09), 0.1)
+      assert.isBelow(loudest(data, 0.15, 0.28), 0.001)
+      assert.isAbove(loudest(data, 0.32, 0.39), 0.05)
+    })
+  )
+
+  it.live("a reverb leaves a tail after the sound has stopped", () =>
+    Effect.gen(function* () {
+      const dry = yield* renderWith([])
+      const wet = yield* renderWith([new Reverb({ seconds: 0.4, mix: 0.5 })])
+      assert.isBelow(loudest(dry, 0.2, 0.5), 0.001)
+      assert.isAbove(loudest(wet, 0.15, 0.3), 0.005)
+    })
+  )
+
+  it.live("a compressor brings a loud tone down", () =>
+    Effect.gen(function* () {
+      const plain = loudest(yield* renderWith([]), 0.03, 0.09)
+      const squeezed = loudest(
+        yield* renderWith([new Compressor({ threshold: -40, ratio: 20, attack: 0 })]),
+        0.05,
+        0.09
+      )
+      assert.isBelow(squeezed, plain * 0.8)
+    })
   )
 
   it.live("a paused voice renders silence and does not end, a resumed one plays", () => {

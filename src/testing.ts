@@ -7,6 +7,10 @@ import * as Layer from "effect/Layer"
 import type {
   AnalyserNodeLike,
   AudioContextLike,
+  BiquadFilterNodeLike,
+  ConvolverNodeLike,
+  DelayNodeLike,
+  DynamicsCompressorNodeLike,
   AudioListenerLike,
   AudioNodeLike,
   AudioParamLike,
@@ -50,6 +54,46 @@ export interface FakeGain extends GainNodeLike {
   readonly disconnects: number
   /** Every node this gain was connected to, in order. */
   readonly connections: ReadonlyArray<AudioNodeLike>
+  /** The argument of every `disconnect` call, in order: `undefined` for one that breaks every connection. */
+  readonly disconnectedFrom: ReadonlyArray<AudioNodeLike | undefined>
+}
+
+/** What every effect node of the fake records: where it was connected and how often it was disconnected. */
+export interface FakeEffectNode extends AudioNodeLike {
+  readonly disconnects: number
+  /** Every node this node was connected to, in order. */
+  readonly connections: ReadonlyArray<AudioNodeLike>
+}
+
+export interface FakeFilter extends BiquadFilterNodeLike, FakeEffectNode {
+  readonly frequency: FakeParam
+  readonly Q: FakeParam
+  readonly gain: FakeParam
+}
+
+export interface FakeDelay extends DelayNodeLike, FakeEffectNode {
+  readonly delayTime: FakeParam
+  /** The longest delay it was created for, in seconds. */
+  readonly maxDelayTime: number
+}
+
+export interface FakeConvolver extends ConvolverNodeLike, FakeEffectNode {}
+
+export interface FakeCompressor extends DynamicsCompressorNodeLike, FakeEffectNode {
+  readonly threshold: FakeParam
+  readonly knee: FakeParam
+  readonly ratio: FakeParam
+  readonly attack: FakeParam
+  readonly release: FakeParam
+}
+
+/** A buffer made by `createBuffer`, with its samples. */
+export interface FakeBuffer {
+  readonly numberOfChannels: number
+  readonly length: number
+  readonly sampleRate: number
+  readonly duration: number
+  getChannelData(channel: number): Float32Array
 }
 
 export interface FakePanner extends StereoPannerNodeLike {
@@ -129,6 +173,12 @@ export interface FakeContext extends AudioContextLike {
   readonly gains: ReadonlyArray<FakeGain>
   readonly panners: ReadonlyArray<FakePanner>
   readonly analysers: ReadonlyArray<FakeAnalyser>
+  readonly filters: ReadonlyArray<FakeFilter>
+  readonly delays: ReadonlyArray<FakeDelay>
+  readonly convolvers: ReadonlyArray<FakeConvolver>
+  readonly compressors: ReadonlyArray<FakeCompressor>
+  /** The buffers `createBuffer` made, in creation order. */
+  readonly buffers: ReadonlyArray<FakeBuffer>
   /** The media elements built by `createMediaElement`, in creation order. */
   readonly elements: ReadonlyArray<FakeMediaElement>
   /** The nodes `createMediaElementSource` returned, in creation order. */
@@ -143,6 +193,7 @@ export interface FakeContext extends AudioContextLike {
   readonly spatialPanners: ReadonlyArray<FakeSpatialPanner>
   readonly listener: AudioListenerLike
   currentTime: number
+  readonly sampleRate: number
 }
 
 export interface FakeContextOptions {
@@ -169,6 +220,22 @@ const makeParam = (): FakeParam => {
       calls.push({ kind: "cancel", value: Number.NaN, time })
     }
   }
+}
+
+/** Counts of the connections of a node, the same for every effect node. */
+const makeEffectNode = (): FakeEffectNode & { disconnects: number } => {
+  const connections: Array<AudioNodeLike> = []
+  const node = {
+    disconnects: 0,
+    connections,
+    connect(destination: AudioNodeLike) {
+      connections.push(destination)
+    },
+    disconnect() {
+      node.disconnects++
+    }
+  }
+  return node
 }
 
 export const makeFakeListener = (): FakeListener => ({
@@ -211,6 +278,11 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
   const gains: Array<FakeGain> = []
   const panners: Array<FakePanner> = []
   const analysers: Array<FakeAnalyser> = []
+  const filters: Array<FakeFilter> = []
+  const delays: Array<FakeDelay> = []
+  const convolvers: Array<FakeConvolver> = []
+  const compressors: Array<FakeCompressor> = []
+  const buffers: Array<FakeBuffer> = []
   const spatialPanners: Array<FakeSpatialPanner> = []
   let resumes = 0
   const elements: Array<FakeMediaElement> = []
@@ -222,6 +294,11 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
     gains,
     panners,
     analysers,
+    filters,
+    delays,
+    convolvers,
+    compressors,
+    buffers,
     spatialPanners,
     elements,
     mediaSources,
@@ -295,6 +372,7 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
     },
     listener: options.listener ?? makeFakeListener(),
     currentTime: 0,
+    sampleRate: 44100,
     state: "running",
     destination,
     createBufferSource() {
@@ -334,15 +412,18 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
     },
     createGain() {
       const connections: Array<AudioNodeLike> = []
+      const disconnectedFrom: Array<AudioNodeLike | undefined> = []
       const gain: FakeGain & { disconnects: number } = {
         gain: makeParam(),
         disconnects: 0,
         connections,
+        disconnectedFrom,
         connect(destination) {
           connections.push(destination)
         },
-        disconnect() {
+        disconnect(destination) {
           gain.disconnects++
+          disconnectedFrom.push(destination)
         }
       }
       gains.push(gain)
@@ -368,6 +449,54 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
       }
       analysers.push(analyser)
       return analyser
+    },
+    createBiquadFilter() {
+      const filter: FakeFilter = Object.assign(makeEffectNode(), {
+        type: "lowpass" as const,
+        frequency: makeParam(),
+        Q: makeParam(),
+        gain: makeParam()
+      })
+      filters.push(filter)
+      return filter
+    },
+    createDelay(maxDelayTime) {
+      const delay: FakeDelay = Object.assign(makeEffectNode(), {
+        delayTime: makeParam(),
+        maxDelayTime
+      })
+      delays.push(delay)
+      return delay
+    },
+    createConvolver() {
+      const convolver: FakeConvolver = Object.assign(makeEffectNode(), {
+        buffer: null as AudioBuffer | null
+      })
+      convolvers.push(convolver)
+      return convolver
+    },
+    createDynamicsCompressor() {
+      const compressor: FakeCompressor = Object.assign(makeEffectNode(), {
+        threshold: makeParam(),
+        knee: makeParam(),
+        ratio: makeParam(),
+        attack: makeParam(),
+        release: makeParam()
+      })
+      compressors.push(compressor)
+      return compressor
+    },
+    createBuffer(channels, length, sampleRate) {
+      const data = Array.from({ length: channels }, () => new Float32Array(length))
+      const buffer: FakeBuffer = {
+        numberOfChannels: channels,
+        length,
+        sampleRate,
+        duration: length / sampleRate,
+        getChannelData: (channel) => data[channel] as Float32Array
+      }
+      buffers.push(buffer)
+      return buffer as unknown as AudioBuffer
     },
     createStereoPanner() {
       const connections: Array<AudioNodeLike> = []

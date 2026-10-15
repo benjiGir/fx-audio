@@ -13,6 +13,7 @@ import * as Stream from "effect/Stream"
 import type {
   AudioNodeLike,
   AudioParamLike,
+  GainNodeLike,
   MediaElementLike,
   PannerNodeLike,
   SourceNodeLike,
@@ -29,6 +30,7 @@ import {
   UnsupportedFormat
 } from "./errors.ts"
 import {
+  type AudioEffect,
   Ended,
   LoopChanged,
   Pan,
@@ -179,6 +181,12 @@ export interface Group {
    * after the group's own volume. Built on the first call and the same object afterwards.
    */
   readonly analyser: Effect.Effect<Analyser>
+  /**
+   * Put these effects on everything this group plays, in order, after the group's own volume,
+   * replacing the ones set before: `[]` takes them all off. Voices already playing are affected
+   * too. The tail of an echo or a reverb that is sounding is cut by the swap.
+   */
+  readonly setEffects: (effects: ReadonlyArray<AudioEffect>) => Effect.Effect<void>
   /** Set the volume at once, cancelling a fade in progress. Dies on a negative or non-finite volume. */
   readonly setVolume: (volume: number) => Effect.Effect<void>
   /** Linear fade to `volume`. While muted, only the volume restored by `unmute` changes. */
@@ -208,6 +216,13 @@ const setVector = (
   params[0].value = x
   params[1].value = y
   params[2].value = z
+}
+
+/** The nodes of one effect: where the sound goes in, where it comes out, and everything to let go of. */
+interface EffectNodes {
+  readonly input: AudioNodeLike
+  readonly output: AudioNodeLike
+  readonly nodes: ReadonlyArray<AudioNodeLike>
 }
 
 /** Adds a stop function to a group's set of playing voices, and returns the way to remove it. */
@@ -497,6 +512,78 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
           return bins
         }),
         waveform
+      }
+    }
+
+    /** Noise that dies away over `seconds`: what a reverb convolves the sound with. */
+    const impulseResponse = (seconds: number, decay: number) => {
+      const length = Math.max(1, Math.round(seconds * ctx.sampleRate))
+      const buffer = ctx.createBuffer(2, length, ctx.sampleRate)
+      for (let channel = 0; channel < 2; channel++) {
+        const data = buffer.getChannelData(channel)
+        for (let i = 0; i < length; i++)
+          data[i] = (Math.random() * 2 - 1) * (1 - i / length) ** decay
+      }
+      return buffer
+    }
+
+    /** The sound goes through `process` (which ends in `wet`) and past it, the two added at `mix`. */
+    const mixed = (mix: number, process: (input: GainNodeLike, wet: GainNodeLike) => void) => {
+      const input = ctx.createGain()
+      const dry = ctx.createGain()
+      const wet = ctx.createGain()
+      const output = ctx.createGain()
+      dry.gain.value = 1 - mix
+      wet.gain.value = mix
+      input.connect(dry)
+      dry.connect(output)
+      process(input, wet)
+      wet.connect(output)
+      return { input, output, nodes: [input, dry, wet, output] }
+    }
+
+    const buildEffect = (effect: AudioEffect): EffectNodes => {
+      switch (effect._tag) {
+        case "filter": {
+          const node = ctx.createBiquadFilter()
+          node.type = effect.type
+          node.frequency.value = effect.frequency
+          node.Q.value = effect.q ?? 1
+          node.gain.value = effect.gain ?? 0
+          return { input: node, output: node, nodes: [node] }
+        }
+        case "compressor": {
+          const node = ctx.createDynamicsCompressor()
+          // Whatever is left out keeps the Web Audio default.
+          if (effect.threshold !== undefined) node.threshold.value = effect.threshold
+          if (effect.knee !== undefined) node.knee.value = effect.knee
+          if (effect.ratio !== undefined) node.ratio.value = effect.ratio
+          if (effect.attack !== undefined) node.attack.value = effect.attack
+          if (effect.release !== undefined) node.release.value = effect.release
+          return { input: node, output: node, nodes: [node] }
+        }
+        case "echo": {
+          const delay = ctx.createDelay(5)
+          const feedback = ctx.createGain()
+          delay.delayTime.value = effect.time / 1000
+          feedback.gain.value = effect.feedback ?? 0.4
+          const { input, output, nodes } = mixed(effect.mix ?? 0.5, (input, wet) => {
+            input.connect(delay)
+            delay.connect(wet)
+          })
+          delay.connect(feedback)
+          feedback.connect(delay)
+          return { input, output, nodes: [...nodes, delay, feedback] }
+        }
+        case "reverb": {
+          const convolver = ctx.createConvolver()
+          convolver.buffer = impulseResponse(effect.seconds ?? 2, effect.decay ?? 2)
+          const { input, output, nodes } = mixed(effect.mix ?? 0.3, (input, wet) => {
+            input.connect(convolver)
+            convolver.connect(wet)
+          })
+          return { input, output, nodes: [...nodes, convolver] }
+        }
       }
     }
 
@@ -1022,11 +1109,29 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       })
 
       let analyser: Analyser | undefined
+      // The effects between the group's gain and its output, in signal order.
+      let effects: ReadonlyArray<EffectNodes> = []
+      const setEffects: Group["setEffects"] = (requested) =>
+        Effect.sync(() => {
+          const [first] = effects
+          if (first === undefined) node.disconnect(output)
+          else node.disconnect(first.input)
+          for (const { nodes } of effects) for (const stage of nodes) stage.disconnect()
+          effects = requested.map(buildEffect)
+          let from: AudioNodeLike = node
+          for (const stage of effects) {
+            from.connect(stage.input)
+            from = stage.output
+          }
+          from.connect(output)
+        })
+
       const play: Group["play"] = (sound, options = {}) =>
         startVoice(sound, options, undefined, node, track)
 
       const group: Group = {
         analyser: Effect.sync(() => (analyser ??= makeAnalyser(node))),
+        setEffects,
         play,
         playSprite: spriteOn(node, track),
         stream: (url, options = {}) => startStream(url, options, node, track),

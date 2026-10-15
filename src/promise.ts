@@ -16,7 +16,7 @@ import { BrowserAudioContextLive } from "./context.ts"
 import type { Analyser, Group, Listener, Voice } from "./core.ts"
 import { Audio, AudioLive } from "./core.ts"
 import type { Sound, SpriteSheet, Vector3, VoiceEvent } from "./model.ts"
-import { PlayOptions } from "./model.ts"
+import { AudioEffect, PlayOptions } from "./model.ts"
 
 /** The level and spectrum of a voice or a group, see `Analyser`. Each method reads the signal as it is now. */
 export interface PromiseAnalyser {
@@ -96,6 +96,12 @@ export interface PromiseGroup {
   stopAll(): void
   /** Reads the level and spectrum of everything this group plays. The same object on every call. */
   analyser(): PromiseAnalyser
+  /**
+   * Put these effects on everything this group plays, in order, replacing the ones set before (`[]`
+   * takes them all off). Each effect is an object with a `_tag`: `{ _tag: "filter", type: "lowpass",
+   * frequency: 800 }`, `echo`, `reverb` or `compressor`. Throws a `SchemaError` on an invalid effect.
+   */
+  setEffects(effects: ReadonlyArray<unknown>): void
   /** Throws a `SchemaError` on a negative or non-finite volume. */
   setVolume(volume: number): void
   /** Linear fade, `milliseconds` long. Throws a `SchemaError` on a negative or non-finite volume. */
@@ -120,6 +126,7 @@ export interface PromiseAudio extends PromiseGroup {
 }
 
 const decodeOptions = Schema.decodeUnknownSync(PlayOptions)
+const decodeEffects = Schema.decodeUnknownSync(Schema.Array(AudioEffect))
 
 type Runtime = ManagedRuntime.ManagedRuntime<Audio, never>
 
@@ -258,6 +265,7 @@ const facade = (
     },
     stopAll: () => runtime.runSync(group.stopAll),
     analyser: () => analyserOf(group.analyser),
+    setEffects: (effects) => runtime.runSync(group.setEffects(decodeEffects(effects))),
     setVolume: (volume) => runtime.runSync(group.setVolume(volume)),
     fadeTo: (volume, milliseconds) =>
       runtime.runSync(group.fadeTo(volume, `${milliseconds} millis`)),

@@ -425,6 +425,21 @@ describe("promise facade on an asynchronous platform layer", () => {
     await audio.dispose()
   })
 
+  it("puts effects on a group from plain objects, and refuses invalid ones", async () => {
+    const { ctx, audio } = setup()
+    const music = audio.group("music")
+    music.setEffects([
+      { _tag: "filter", type: "lowpass", frequency: 800 },
+      { _tag: "echo", time: 200 }
+    ])
+    assert.strictEqual(ctx.filters[0]?.frequency.value, 800)
+    assert.strictEqual(ctx.delays[0]?.delayTime.value, 0.2)
+    assert.throws(() => music.setEffects([{ _tag: "echo", time: -5 }]))
+    music.setEffects([])
+    assert.strictEqual(ctx.filters[0]?.disconnects, 1)
+    await audio.dispose()
+  })
+
   it("on listens to one kind of event until the returned function is called", async () => {
     const { audio } = setup()
     const sound = new Sound({ buffer: { duration: 4 } as AudioBuffer, source: "a.wav" })

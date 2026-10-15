@@ -8,7 +8,8 @@ import * as Layer from "effect/Layer"
  */
 export interface AudioNodeLike {
   connect(destination: AudioNodeLike): unknown
-  disconnect(): void
+  /** Without an argument, breaks every connection out of the node; with one, only the one to `destination`. */
+  disconnect(destination?: AudioNodeLike): void
 }
 
 export interface AudioParamLike {
@@ -81,6 +82,37 @@ export interface AnalyserNodeLike extends AudioNodeLike {
   getFloatTimeDomainData(array: Float32Array): void
 }
 
+export interface BiquadFilterNodeLike extends AudioNodeLike {
+  type:
+    | "lowpass"
+    | "highpass"
+    | "bandpass"
+    | "notch"
+    | "allpass"
+    | "peaking"
+    | "lowshelf"
+    | "highshelf"
+  readonly frequency: AudioParamLike
+  readonly Q: AudioParamLike
+  readonly gain: AudioParamLike
+}
+
+export interface DelayNodeLike extends AudioNodeLike {
+  readonly delayTime: AudioParamLike
+}
+
+export interface ConvolverNodeLike extends AudioNodeLike {
+  buffer: AudioBuffer | null
+}
+
+export interface DynamicsCompressorNodeLike extends AudioNodeLike {
+  readonly threshold: AudioParamLike
+  readonly knee: AudioParamLike
+  readonly ratio: AudioParamLike
+  readonly attack: AudioParamLike
+  readonly release: AudioParamLike
+}
+
 /** The part of `HTMLAudioElement` the streaming path uses. */
 export interface MediaElementLike {
   src: string
@@ -101,12 +133,18 @@ export interface MediaElementLike {
 
 export interface AudioContextLike {
   readonly currentTime: number
+  readonly sampleRate: number
   readonly state: string
   readonly destination: AudioNodeLike
   readonly listener: AudioListenerLike
   createBufferSource(): SourceNodeLike
   createGain(): GainNodeLike
   createAnalyser(): AnalyserNodeLike
+  createBiquadFilter(): BiquadFilterNodeLike
+  createDelay(maxDelayTime: number): DelayNodeLike
+  createConvolver(): ConvolverNodeLike
+  createDynamicsCompressor(): DynamicsCompressorNodeLike
+  createBuffer(channels: number, length: number, sampleRate: number): AudioBuffer
   createStereoPanner(): StereoPannerNodeLike
   createPanner(): PannerNodeLike
   createMediaElementSource(element: MediaElementLike): AudioNodeLike

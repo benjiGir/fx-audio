@@ -2,6 +2,10 @@ import * as Layer from "effect/Layer"
 import type {
   AnalyserNodeLike,
   AudioContextLike,
+  BiquadFilterNodeLike,
+  ConvolverNodeLike,
+  DelayNodeLike,
+  DynamicsCompressorNodeLike,
   GainNodeLike,
   PannerNodeLike,
   SourceNodeLike,
@@ -20,6 +24,7 @@ export const makeOfflineContext = (seconds = 0.5, sampleRate = 44100, channels =
     get currentTime() {
       return offline.currentTime
     },
+    sampleRate,
     get state() {
       return offline.state
     },
@@ -27,6 +32,12 @@ export const makeOfflineContext = (seconds = 0.5, sampleRate = 44100, channels =
     createBufferSource: () => offline.createBufferSource() as unknown as SourceNodeLike,
     createGain: () => offline.createGain() as unknown as GainNodeLike,
     createAnalyser: () => offline.createAnalyser() as unknown as AnalyserNodeLike,
+    createBiquadFilter: () => offline.createBiquadFilter() as unknown as BiquadFilterNodeLike,
+    createDelay: (max) => offline.createDelay(max) as unknown as DelayNodeLike,
+    createConvolver: () => offline.createConvolver() as unknown as ConvolverNodeLike,
+    createDynamicsCompressor: () =>
+      offline.createDynamicsCompressor() as unknown as DynamicsCompressorNodeLike,
+    createBuffer: (channels, length, rate) => offline.createBuffer(channels, length, rate),
     listener: offline.listener as unknown as AudioContextLike["listener"],
     createMediaElementSource: () => {
       throw new Error("an OfflineAudioContext cannot take a media element")

@@ -10,6 +10,10 @@ export type {
   AudioListenerLike,
   AudioNodeLike,
   AudioParamLike,
+  BiquadFilterNodeLike,
+  ConvolverNodeLike,
+  DelayNodeLike,
+  DynamicsCompressorNodeLike,
   GainNodeLike,
   MediaElementLike,
   PannerNodeLike,
@@ -29,12 +33,17 @@ export {
   UnsupportedFormat
 } from "./errors.ts"
 export {
+  AudioEffect,
+  Compressor,
+  Echo,
   Ended,
+  Filter,
   LoopChanged,
   Paused,
   PlayOptions,
   RateChanged,
   Resumed,
+  Reverb,
   Seeked,
   Sound,
   SpatialOptions,
