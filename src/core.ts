@@ -5,7 +5,6 @@ import * as Effect from "effect/Effect"
 import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
 import * as PubSub from "effect/PubSub"
-import * as Ref from "effect/Ref"
 import * as Schema from "effect/Schema"
 import * as Scope from "effect/Scope"
 import * as Semaphore from "effect/Semaphore"
@@ -31,6 +30,7 @@ import {
 } from "./errors.ts"
 import {
   type AudioEffect,
+  type DuckOptions,
   Ended,
   LoopChanged,
   Pan,
@@ -195,6 +195,15 @@ export interface Group {
    * stops the oldest voices at once. Dies on anything but a whole number of one or more.
    */
   readonly setMaxVoices: (limit: number | undefined) => Effect.Effect<void>
+  /**
+   * Lower this group while `trigger` has voices playing, and bring it back when it has none: the
+   * music that gives way to a voice. The two fade over `options.attack` and `options.release`, and
+   * the group goes down to `options.volume` times its own volume, so `setVolume` and `fadeTo` keep
+   * working while it is ducked. A paused voice of `trigger` counts as playing. Several triggers
+   * together bring it down to the lowest of their levels. The ducking ends when the scope closes.
+   * `trigger` must be a group of this audio.
+   */
+  readonly duck: (trigger: Group, options?: DuckOptions) => Effect.Effect<void, never, Scope.Scope>
   /** Set the volume at once, cancelling a fade in progress. Dies on a negative or non-finite volume. */
   readonly setVolume: (volume: number) => Effect.Effect<void>
   /** Linear fade to `volume`. While muted, only the volume restored by `unmute` changes. */
@@ -663,8 +672,11 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
           fadeTo: (volume, over) =>
             Effect.sync(() => {
               const now = ctx.currentTime
+              const seconds = Duration.toSeconds(over)
               gain.gain.setValueAtTime(gain.gain.value, now)
-              gain.gain.linearRampToValueAtTime(volume, now + Duration.toSeconds(over))
+              // A ramp that ends when it starts leaves the value alone in some engines.
+              if (seconds <= 0) gain.gain.setValueAtTime(volume, now)
+              else gain.gain.linearRampToValueAtTime(volume, now + seconds)
             }),
           setVolume: (requested) =>
             Effect.sync(() => {
@@ -1080,6 +1092,12 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
         return yield* startVoice(sheet.sound, options, segment, output, track)
       })
 
+    // What a group lets the others know of it: whether voices play through it, and when that changes.
+    const peers = new WeakMap<
+      Group,
+      { readonly count: () => number; readonly watch: (listener: () => void) => () => void }
+    >()
+
     const buildGroup = Effect.fnUntraced(function* (
       output: AudioNodeLike,
       parent?: Tracker
@@ -1096,39 +1114,47 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
         }),
         (node) => Effect.sync(() => node.disconnect())
       )
-      // The volume to restore on unmute, and whether the group is silenced right now.
-      const volume = yield* Ref.make(1)
-      const muted = yield* Ref.make(false)
+      // The volume to restore on unmute, whether the group is silenced right now, and the factor
+      // the groups that duck this one bring it down by (1 when none does).
+      let volume = 1
+      let muted = false
+      let ducking = 1
 
-      const applyNow = (value: number) =>
+      const applyNow = (value: number) => {
+        const now = ctx.currentTime
+        node.gain.cancelScheduledValues(now)
+        node.gain.setValueAtTime(value, now)
+      }
+      const rampTo = (value: number, over: Duration.Input) => {
+        const seconds = Duration.toSeconds(over)
+        // A ramp that ends when it starts leaves the value alone in some engines: set it instead.
+        if (seconds <= 0) return applyNow(value)
+        const now = ctx.currentTime
+        node.gain.cancelScheduledValues(now)
+        node.gain.setValueAtTime(node.gain.value, now)
+        node.gain.linearRampToValueAtTime(value, now + seconds)
+      }
+
+      const setVolume = (requested: number) =>
         Effect.sync(() => {
-          const now = ctx.currentTime
-          node.gain.cancelScheduledValues(now)
-          node.gain.setValueAtTime(value, now)
+          volume = decodeVolume(requested)
+          if (!muted) applyNow(volume * ducking)
         })
 
-      const setVolume = Effect.fnUntraced(function* (requested: number) {
-        const value = decodeVolume(requested)
-        yield* Ref.set(volume, value)
-        if (!(yield* Ref.get(muted))) yield* applyNow(value)
-      })
-
-      const fadeTo = Effect.fnUntraced(function* (requested: number, over: Duration.Input) {
-        const value = decodeVolume(requested)
-        yield* Ref.set(volume, value)
-        if (yield* Ref.get(muted)) return
-        yield* Effect.sync(() => {
-          const now = ctx.currentTime
-          node.gain.cancelScheduledValues(now)
-          node.gain.setValueAtTime(node.gain.value, now)
-          node.gain.linearRampToValueAtTime(value, now + Duration.toSeconds(over))
+      const fadeTo = (requested: number, over: Duration.Input) =>
+        Effect.sync(() => {
+          volume = decodeVolume(requested)
+          if (!muted) rampTo(volume * ducking, over)
         })
-      })
 
-      const mute = Effect.suspend(() => Ref.set(muted, true).pipe(Effect.andThen(applyNow(0))))
-      const unmute = Effect.suspend(() =>
-        Ref.set(muted, false).pipe(Effect.andThen(Ref.get(volume)), Effect.flatMap(applyNow))
-      )
+      const mute = Effect.sync(() => {
+        muted = true
+        applyNow(0)
+      })
+      const unmute = Effect.sync(() => {
+        muted = false
+        applyNow(volume * ducking)
+      })
 
       // The voices playing through this group, which also count for the group it feeds.
       const playing = new Set<() => void>()
@@ -1140,14 +1166,28 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
           oldest()
         }
       }
+      const watchers = new Set<() => void>()
+      const notify = () => {
+        for (const watcher of Array.from(watchers)) watcher()
+      }
       const track: Tracker = (stop) => {
         playing.add(stop)
         const untrackParent = parent?.(stop)
         if (playing.size > maxVoices) trim()
+        notify()
         return () => {
           playing.delete(stop)
           untrackParent?.()
+          notify()
         }
+      }
+
+      // The groups that duck this one, and whether each of them is ducking it right now.
+      const ducks = new Set<{ active: boolean; volume: number; attack: number; release: number }>()
+      const reduck = (over: number) => {
+        ducking = 1
+        for (const duck of ducks) if (duck.active) ducking = Math.min(ducking, duck.volume)
+        if (!muted) rampTo(volume * ducking, Duration.millis(over))
       }
       // Stopping a voice removes it from the set, so walk a copy.
       const stopAll = Effect.sync(() => {
@@ -1196,11 +1236,47 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
             maxVoices = decodeMaxVoices(limit) ?? Number.POSITIVE_INFINITY
             trim()
           }),
+        duck: (trigger, options = {}) =>
+          Effect.acquireRelease(
+            Effect.sync(() => {
+              const peer = peers.get(trigger)
+              if (peer === undefined) throw new Error("duck needs a group of this audio")
+              const duck = {
+                active: false,
+                volume: options.volume ?? 0.3,
+                attack: options.attack ?? 100,
+                release: options.release ?? 500
+              }
+              ducks.add(duck)
+              const follow = () => {
+                const active = peer.count() > 0
+                if (active === duck.active) return
+                duck.active = active
+                reduck(active ? duck.attack : duck.release)
+              }
+              const unwatch = peer.watch(follow)
+              follow()
+              return { duck, unwatch }
+            }),
+            ({ duck, unwatch }) =>
+              Effect.sync(() => {
+                unwatch()
+                ducks.delete(duck)
+                reduck(duck.release)
+              })
+          ).pipe(Effect.asVoid),
         setVolume,
         fadeTo,
         mute,
         unmute
       }
+      peers.set(group, {
+        count: () => playing.size,
+        watch: (listener) => {
+          watchers.add(listener)
+          return () => watchers.delete(listener)
+        }
+      })
       return { group, node, track }
     })
 

@@ -29,3 +29,15 @@ and lowering it stops the oldest voices at once. On the master it counts the voi
 `voiceCount` is how many voices play through the group right now (paused ones included), and `audio.state` is the state of the
 audio context: a sound that stays silent while the state is not `running` is waiting for the context, see
 [autoplay](./autoplay).
+
+## Ducking
+
+`music.duck(voice, options)` lowers the music while the `voice` group has a voice playing, and brings it back when it has none:
+the music that gives way to speech, without you watching for the start and the end of every line.
+
+<<< @/examples/groups.ts#ducking{ts}
+
+The music goes down to `volume` times its own volume (0.3 by default) over `attack` milliseconds (100) and comes back over
+`release` (500). `setVolume`, `fadeTo`, `mute` and `unmute` keep working on top of the ducking. Several triggers bring the group
+down to the lowest of their levels, and a paused voice of the trigger counts as playing. The ducking ends when the scope closes; on the
+promise facade `duck` returns a function that ends it. The master can be ducked too (`audio.master.duck(alarm)`).

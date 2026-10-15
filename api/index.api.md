@@ -175,6 +175,9 @@ export interface DelayNodeLike extends AudioNodeLike {
     readonly delayTime: AudioParamLike;
 }
 
+// @public
+export class DuckOptions extends DuckOptions_base {}
+
 // @public (undocumented)
 export interface DynamicsCompressorNodeLike extends AudioNodeLike {
     // (undocumented)
@@ -208,6 +211,7 @@ export interface GainNodeLike extends AudioNodeLike {
 export interface Group {
     readonly analyser: Effect.Effect<Analyser>;
     readonly crossfade: (out: Voice, sound: Sound, over: Duration.Input, options?: PlayOptions) => Effect.Effect<Voice, never, Scope.Scope>;
+    readonly duck: (trigger: Group, options?: DuckOptions) => Effect.Effect<void, never, Scope.Scope>;
     readonly fadeTo: (volume: number, over: Duration.Input) => Effect.Effect<void>;
     readonly mute: Effect.Effect<void>;
     // (undocumented)

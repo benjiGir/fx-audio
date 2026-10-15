@@ -38,6 +38,7 @@ export {
   AudioEffect,
   Compressor,
   Echo,
+  DuckOptions,
   Ended,
   Filter,
   LoopChanged,

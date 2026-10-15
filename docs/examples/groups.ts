@@ -36,3 +36,18 @@ export const limited = (step: Sound) =>
     return { playing, everywhere, state }
   })
 // #endregion max-voices
+
+// #region ducking
+export const ducking = (speech: Sound) =>
+  Effect.gen(function* () {
+    const audio = yield* Audio
+    const music = yield* audio.group("music")
+    const voice = yield* audio.group("voice")
+
+    // The music goes down to 30 % in a tenth of a second whenever the voice group plays,
+    // and comes back over half a second after. It lasts as long as the surrounding scope.
+    yield* music.duck(voice, { volume: 0.3, attack: 100, release: 500 })
+
+    yield* voice.play(speech)
+  })
+// #endregion ducking

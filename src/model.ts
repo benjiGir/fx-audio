@@ -159,6 +159,19 @@ export class Compressor extends Schema.TaggedClass<Compressor>()("compressor", {
 export const AudioEffect = Schema.Union([Filter, Echo, Reverb, Compressor])
 export type AudioEffect = typeof AudioEffect.Type
 
+/**
+ * How a group gives way to another: see `Group.duck`. Decode untrusted input with
+ * `Schema.decodeUnknownSync(DuckOptions)`.
+ */
+export class DuckOptions extends Schema.Class<DuckOptions>("fx-audio/DuckOptions")({
+  /** What the group is brought down to, as a share of its own volume: 0 is silence, 1 changes nothing. 0.3 by default. */
+  volume: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),
+  /** Milliseconds to go down once the trigger starts. 100 by default. */
+  attack: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))),
+  /** Milliseconds to come back once the trigger has stopped. 500 by default. */
+  release: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)))
+}) {}
+
 /** A named slice of one sound. `start` and `duration` are in milliseconds, as in Howler. */
 export class SpriteSegment extends Schema.Class<SpriteSegment>("fx-audio/SpriteSegment")({
   start: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),
