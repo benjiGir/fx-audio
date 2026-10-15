@@ -61,6 +61,7 @@ export default defineConfig({
             { text: "Groups and master", link: "/guide/groups" },
             { text: "Level meters", link: "/guide/analyser" },
             { text: "Effects", link: "/guide/effects" },
+            { text: "Variation", link: "/guide/variation" },
             { text: "Stereo pan", link: "/guide/pan" },
             { text: "3D position", link: "/guide/spatial" },
             { text: "Streaming", link: "/guide/streaming" },

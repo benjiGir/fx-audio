@@ -21,6 +21,8 @@ export type {
   StereoPannerNodeLike
 } from "./context.ts"
 export { AudioContextService, BrowserAudioContextLive } from "./context.ts"
+export type { SoundBank } from "./bank.ts"
+export { makeSoundBank } from "./bank.ts"
 export type { Analyser, Group, Listener, Voice } from "./core.ts"
 export { Audio, AudioBrowserLive, AudioLive } from "./core.ts"
 export {

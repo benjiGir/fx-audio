@@ -78,7 +78,21 @@ export class PlayOptions extends Schema.Class<PlayOptions>("fx-audio/PlayOptions
    * Start at this time on the audio clock, in milliseconds, as `audio.now` reports it. A time already
    * past starts at once. It wins over `delay`. Sounds only: a stream starts at once.
    */
-  startAt: Schema.optionalKey(Schema.Finite)
+  startAt: Schema.optionalKey(Schema.Finite),
+  /**
+   * Vary the speed, and so the pitch, at random each time: `rateVariation: 0.1` plays at a speed
+   * between 0.9 and 1.1 times `rate`. From 0 (the default) to 0.9.
+   */
+  rateVariation: Schema.optionalKey(
+    Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 0.9 }))
+  ),
+  /**
+   * Vary the volume at random each time: `volumeVariation: 0.2` plays between 0.8 and 1.2 times
+   * `volume`. From 0 (the default) to 1.
+   */
+  volumeVariation: Schema.optionalKey(
+    Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 }))
+  )
 }) {}
 
 const FilterType = Schema.Literals([
