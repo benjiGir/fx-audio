@@ -21,6 +21,7 @@ Documentation: <https://benjigir.github.io/fx-audio/>
 | `fx-audio/node` | `NodeAudioContextLive`, on top of `node-web-audio-api`: loads sounds from disk |
 | `fx-audio/promise` | Promise facade for code that does not use Effect (`createAudio`, and `createAudioAsync` for Node) |
 | `fx-audio/testing` | `makeFakeContext` and `FakeAudioContextLive`, an audio context double for tests |
+| `fx-audio/react` | `AudioProvider`, `useAudio`, `useGroup` and `useSound`, for React 18 or later (optional peer dependency) |
 
 Import Effect modules by subpath (`effect/Effect`), never from the `effect` barrel, to keep bundles small.
 
@@ -173,6 +174,17 @@ The browser decodes whatever the browser supports. Under Node, `node-web-audio-a
 but not Opus: decoding Opus there fails with `LoadError` whose `reason` is `UnsupportedFormat`,
 so you can catch it with `Effect.catchReason` and load another codec.
 
+## More
+
+The documentation has a guide for each of these:
+
+- [Controlling a voice](https://benjigir.github.io/fx-audio/guide/voices): pause, resume, seek, live volume, rate and loop, events, `fadeOut` and `crossfade`.
+- [Scheduling](https://benjigir.github.io/fx-audio/guide/scheduling): `delay`, `startAt` and `audio.now`, to start sounds on the audio clock.
+- [Groups and master](https://benjigir.github.io/fx-audio/guide/groups): `stopAll`, voice cap, `voiceCount`, ducking.
+- [Effects](https://benjigir.github.io/fx-audio/guide/effects) and [level meters](https://benjigir.github.io/fx-audio/guide/analyser): filter, echo, reverb and compressor on a group, analysers on a voice, a group or the master.
+- [Variation](https://benjigir.github.io/fx-audio/guide/variation): random pitch and volume, and sound banks.
+- [React](https://benjigir.github.io/fx-audio/guide/react): `AudioProvider`, `useAudio`, `useGroup` and `useSound`.
+
 ## Development
 
 ```sh
@@ -200,7 +212,7 @@ Stryker's Vitest runner does not support Vitest 5 yet.
 ## Frozen API
 
 The public surface of every entry point (`fx-audio`, `fx-audio/promise`, `fx-audio/node`,
-`fx-audio/testing`) is written to `api/*.api.md` by API Extractor, and CI fails when the built
+`fx-audio/testing`, `fx-audio/react`) is written to `api/*.api.md` by API Extractor, and CI fails when the built
 declarations no longer match. A pull request that changes a signature has to update those
 files, so the change shows up in review. `test/api.test.ts` pins the signatures users write
 code against with type tests, checked by `pnpm typecheck`.
