@@ -17,3 +17,15 @@ voice, in the named groups too. Each voice ends as if `stop` had been called on 
 to be ready is not reached: it starts once it can.
 
 The promise facade has the same methods (`group(name)`, `master`, and the group methods on the facade itself).
+
+## Limit the voices
+
+A burst of the same sound (gunfire, footsteps, rain) piles up voices and costs CPU. `setMaxVoices(limit)` caps the voices
+playing through a group: the one that starts over the cap stops the oldest, which hears a `stop` event. `undefined` removes the cap,
+and lowering it stops the oldest voices at once. On the master it counts the voices of every group.
+
+<<< @/examples/groups.ts#max-voices{ts}
+
+`voiceCount` is how many voices play through the group right now (paused ones included), and `audio.state` is the state of the
+audio context: a sound that stays silent while the state is not `running` is waiting for the context, see
+[autoplay](./autoplay).

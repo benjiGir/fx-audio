@@ -102,6 +102,13 @@ export interface PromiseGroup {
    * frequency: 800 }`, `echo`, `reverb` or `compressor`. Throws a `SchemaError` on an invalid effect.
    */
   setEffects(effects: ReadonlyArray<unknown>): void
+  /** How many voices are playing through this group right now, paused ones included. */
+  voiceCount(): number
+  /**
+   * Cap the voices playing through this group: a voice that starts over the cap stops the oldest one.
+   * `undefined` removes the cap. Throws a `SchemaError` on anything but a whole number of one or more.
+   */
+  setMaxVoices(limit: number | undefined): void
   /** Throws a `SchemaError` on a negative or non-finite volume. */
   setVolume(volume: number): void
   /** Linear fade, `milliseconds` long. Throws a `SchemaError` on a negative or non-finite volume. */
@@ -120,6 +127,8 @@ export interface PromiseAudio extends PromiseGroup {
   readonly listener: PromiseListener
   /** The audio clock in milliseconds, the time `startAt` is counted on. It runs only while the context does. */
   now(): number
+  /** The state of the audio context: `running`, `suspended`, `interrupted` or `closed`. */
+  state(): string
   /** Resume a context the browser kept suspended. Call it from a user gesture; it also happens on the first click, key press or touch. */
   resume(): Promise<void>
   dispose(): Promise<void>
@@ -266,6 +275,8 @@ const facade = (
     stopAll: () => runtime.runSync(group.stopAll),
     analyser: () => analyserOf(group.analyser),
     setEffects: (effects) => runtime.runSync(group.setEffects(decodeEffects(effects))),
+    voiceCount: () => runtime.runSync(group.voiceCount),
+    setMaxVoices: (limit) => runtime.runSync(group.setMaxVoices(limit)),
     setVolume: (volume) => runtime.runSync(group.setVolume(volume)),
     fadeTo: (volume, milliseconds) =>
       runtime.runSync(group.fadeTo(volume, `${milliseconds} millis`)),
@@ -282,6 +293,7 @@ const facade = (
       setPosition: (position) => runtime.runSync(listener.setPosition(position)),
       setOrientation: (forward, up) => runtime.runSync(listener.setOrientation(forward, up))
     },
+    state: () => runtime.runSync(audio.state),
     resume: () => runtime.runPromise(audio.resume),
     now: () => runtime.runSync(audio.now),
     load: (url, signal) =>

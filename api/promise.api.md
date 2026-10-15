@@ -33,6 +33,7 @@ export interface PromiseAudio extends PromiseGroup {
     readonly master: PromiseGroup;
     now(): number;
     resume(): Promise<void>;
+    state(): string;
 }
 
 // @public
@@ -45,11 +46,13 @@ export interface PromiseGroup {
     play(sound: Sound, options?: unknown): PromiseVoice;
     playSprite(sheet: SpriteSheet, name: string, options?: unknown): PromiseVoice;
     setEffects(effects: ReadonlyArray<unknown>): void;
+    setMaxVoices(limit: number | undefined): void;
     setVolume(volume: number): void;
     stopAll(): void;
     stream(url: string, options?: unknown): Promise<PromiseVoice>;
     // (undocumented)
     unmute(): void;
+    voiceCount(): number;
 }
 
 // @public

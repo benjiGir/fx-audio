@@ -440,6 +440,23 @@ describe("promise facade on an asynchronous platform layer", () => {
     await audio.dispose()
   })
 
+  it("caps the voices of a group, counts them and reports the context state", async () => {
+    const { audio } = setup()
+    const sound = new Sound({ buffer: { duration: 4 } as AudioBuffer, source: "a.wav" })
+    const sfx = audio.group("sfx")
+    sfx.setMaxVoices(2)
+    const first = sfx.play(sound)
+    sfx.play(sound)
+    sfx.play(sound)
+    assert.strictEqual(sfx.voiceCount(), 2)
+    assert.strictEqual(audio.voiceCount(), 2)
+    await first.ended
+    sfx.setMaxVoices(undefined)
+    assert.throws(() => sfx.setMaxVoices(0))
+    assert.strictEqual(audio.state(), "running")
+    await audio.dispose()
+  })
+
   it("on listens to one kind of event until the returned function is called", async () => {
     const { audio } = setup()
     const sound = new Sound({ buffer: { duration: 4 } as AudioBuffer, source: "a.wav" })

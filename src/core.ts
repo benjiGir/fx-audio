@@ -187,6 +187,14 @@ export interface Group {
    * too. The tail of an echo or a reverb that is sounding is cut by the swap.
    */
   readonly setEffects: (effects: ReadonlyArray<AudioEffect>) => Effect.Effect<void>
+  /** How many voices are playing through this group right now, paused ones included. */
+  readonly voiceCount: Effect.Effect<number>
+  /**
+   * Cap the voices playing through this group: a voice that starts over the cap stops the oldest one,
+   * so a burst of sounds (gunfire, footsteps) cannot pile up. `undefined` removes the cap. Lowering it
+   * stops the oldest voices at once. Dies on anything but a whole number of one or more.
+   */
+  readonly setMaxVoices: (limit: number | undefined) => Effect.Effect<void>
   /** Set the volume at once, cancelling a fade in progress. Dies on a negative or non-finite volume. */
   readonly setVolume: (volume: number) => Effect.Effect<void>
   /** Linear fade to `volume`. While muted, only the volume restored by `unmute` changes. */
@@ -207,6 +215,9 @@ const decodeVolume = Schema.decodeUnknownSync(Volume)
 const decodePan = Schema.decodeUnknownSync(Pan)
 const decodeRate = Schema.decodeUnknownSync(Rate)
 const decodePosition = Schema.decodeUnknownSync(Position)
+const decodeMaxVoices = Schema.decodeUnknownSync(
+  Schema.UndefinedOr(Schema.Int.check(Schema.isGreaterThanOrEqualTo(1)))
+)
 const decodeVector = Schema.decodeUnknownSync(Vector3)
 
 const setVector = (
@@ -365,6 +376,14 @@ export class Audio extends Context.Service<
       over: Duration.Input,
       options?: PlayOptions
     ): Effect.Effect<Voice, never, Scope.Scope>
+    /** How many voices are playing, in every group. See `Group.voiceCount`. */
+    readonly voiceCount: Effect.Effect<number>
+    /**
+     * The state of the audio context: `running`, `suspended` (before the first user gesture, or after
+     * the browser paused it), `interrupted` (on iOS, by a call) or `closed`. A sound that stays silent
+     * on a context that is not `running` is waiting for it.
+     */
+    readonly state: Effect.Effect<string>
     /** Stop every voice playing, in every group: Howler's `Howler.stop()`. See `Group.stopAll`. */
     readonly stopAll: Effect.Effect<void>
     /** Reads the level and spectrum of everything that plays, see `Group.analyser`. */
@@ -1095,9 +1114,18 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
 
       // The voices playing through this group, which also count for the group it feeds.
       const playing = new Set<() => void>()
+      let maxVoices = Number.POSITIVE_INFINITY
+      // A set walks in the order it was filled, so the oldest voice comes first.
+      const trim = () => {
+        for (const oldest of Array.from(playing)) {
+          if (playing.size <= maxVoices) return
+          oldest()
+        }
+      }
       const track: Tracker = (stop) => {
         playing.add(stop)
         const untrackParent = parent?.(stop)
+        if (playing.size > maxVoices) trim()
         return () => {
           playing.delete(stop)
           untrackParent?.()
@@ -1144,6 +1172,12 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
           return next
         }),
         stopAll,
+        voiceCount: Effect.sync(() => playing.size),
+        setMaxVoices: (limit) =>
+          Effect.sync(() => {
+            maxVoices = decodeMaxVoices(limit) ?? Number.POSITIVE_INFINITY
+            trim()
+          }),
         setVolume,
         fadeTo,
         mute,
@@ -1224,6 +1258,8 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       crossfade: master.crossfade,
       stopAll: master.stopAll,
       analyser: master.analyser,
+      voiceCount: master.voiceCount,
+      state: Effect.sync(() => ctx.state),
       master,
       group,
       listener: listenerService,
