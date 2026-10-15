@@ -25,6 +25,10 @@
       "types": "./dist/promise.d.ts",
       "default": "./dist/promise.js"
     },
+    "./react": {
+      "types": "./dist/react.d.ts",
+      "default": "./dist/react.js"
+    },
     "./testing": {
       "types": "./dist/testing.d.ts",
       "default": "./dist/testing.js"
@@ -53,9 +57,13 @@
   },
   "peerDependencies": {
     "effect": "^4.0.4",
-    "node-web-audio-api": "^2.2.0"
+    "node-web-audio-api": "^2.2.0",
+    "react": ">=18"
   },
   "peerDependenciesMeta": {
+    "react": {
+      "optional": true
+    },
     "node-web-audio-api": {
       "optional": true
     }
@@ -69,6 +77,8 @@
     "@stryker-mutator/vitest-runner": "10.0.0",
     "@types/howler": "2.2.13",
     "@types/node": "^22.0.0",
+    "@types/react": "18.3.12",
+    "@types/react-test-renderer": "18.3.0",
     "@vitest/browser-playwright": "4.1.11",
     "@vitest/coverage-v8": "4.1.11",
     "effect": "4.0.4",
@@ -78,6 +88,8 @@
     "oxlint": "1.88.0",
     "playwright": "1.64.1",
     "publint": "0.3.25",
+    "react": "18.3.1",
+    "react-test-renderer": "18.3.1",
     "tsdown": "0.23.1",
     "typedoc": "0.28.20",
     "typedoc-plugin-markdown": "4.14.0",

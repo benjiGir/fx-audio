@@ -66,6 +66,7 @@ export default defineConfig({
             { text: "3D position", link: "/guide/spatial" },
             { text: "Streaming", link: "/guide/streaming" },
             { text: "Autoplay policy", link: "/guide/autoplay" },
+            { text: "React", link: "/guide/react" },
             { text: "Node", link: "/guide/node" },
             { text: "Using Effect", link: "/guide/effect" },
             { text: "Testing your code", link: "/guide/testing" },
