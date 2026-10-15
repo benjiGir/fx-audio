@@ -2,6 +2,7 @@ import * as Context from "effect/Context"
 import * as Deferred from "effect/Deferred"
 import * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
+import * as Exit from "effect/Exit"
 import * as Layer from "effect/Layer"
 import * as PubSub from "effect/PubSub"
 import * as Ref from "effect/Ref"
@@ -179,10 +180,15 @@ const isLast = (event: VoiceEvent) => event._tag === "stop" || event._tag === "e
 const voiceBus = (ended: Deferred.Deferred<void>, track: Tracker) => {
   let hub: PubSub.PubSub<VoiceEvent> | undefined
   let untrack: (() => void) | undefined
+  let cleanup: (() => void) | undefined
   return {
     /** Let `stopAll` reach this voice until it ends. */
     register: (stop: () => void) => {
       untrack = track(stop)
+    },
+    /** Run `release` once the voice has ended, whichever way it ended. */
+    releaseOnEnd: (release: () => void) => {
+      cleanup = release
     },
     emit: (event: VoiceEvent) => {
       if (hub !== undefined) PubSub.publishUnsafe(hub, event)
@@ -192,6 +198,7 @@ const voiceBus = (ended: Deferred.Deferred<void>, track: Tracker) => {
       untrack?.()
       if (hub !== undefined) PubSub.publishUnsafe(hub, last)
       Deferred.doneUnsafe(ended, Effect.void)
+      cleanup?.()
     },
     events: Stream.unwrap(
       Effect.suspend(() =>
@@ -207,6 +214,35 @@ const voiceBus = (ended: Deferred.Deferred<void>, track: Tracker) => {
 }
 
 type VoiceBus = ReturnType<typeof voiceBus>
+
+/**
+ * Like `Effect.acquireRelease`, and also returns a `close` that releases at once and drops the
+ * finalizer. A scope that lives as long as the app, such as the promise facade's, would otherwise
+ * keep one finalizer, and everything it refers to, for every voice ever played.
+ */
+const releasable = <A>(acquire: () => A, release: (resource: A) => void) =>
+  Effect.gen(function* () {
+    const scope = yield* Scope.Scope
+    return yield* Effect.uninterruptible(
+      Effect.gen(function* () {
+        const own = Scope.forkUnsafe(scope)
+        const resource = acquire()
+        let released = false
+        const once = () => {
+          if (released) return
+          released = true
+          release(resource)
+        }
+        yield* Scope.addFinalizer(own, Effect.sync(once))
+        const close = () => {
+          once()
+          // Closing the child drops it from the parent; `once` has run what its finalizer would.
+          Scope.closeUnsafe(own, Exit.void)
+        }
+        return { resource, close }
+      })
+    )
+  })
 
 /** What differs between a voice on a decoded buffer and one on a media element. Times are in seconds. */
 interface Player {
@@ -285,6 +321,15 @@ export class Audio extends Context.Service<
   }
   // Stryker disable next-line StringLiteral: the service key is only an identifier.
 >()("fx-audio/Audio") {}
+
+/** A media element and the graph node made from it, which cannot be made twice. */
+interface StreamSlot {
+  readonly element: MediaElementLike
+  readonly source: AudioNodeLike
+}
+
+/** How many finished stream elements are kept for reuse. */
+const maxIdleStreams = 4
 
 /** The service, still needing an `AudioContextService` for the platform. */
 export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.effect(
@@ -497,7 +542,11 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
         source.loop = loop
         source.playbackRate.value = rate
         chain.setInput(source)
-        source.onended = finish
+        source.onended = () => {
+          // It has run out: nothing is left to stop.
+          current = undefined
+          finish()
+        }
         offset = from
         anchor = ctx.currentTime
         current = source
@@ -630,19 +679,22 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
     ): Effect.fn.Return<Voice, never, Scope.Scope> {
       const ended = yield* Deferred.make<void>()
       const bus = voiceBus(ended, track)
-      const { player, chain } = yield* Effect.acquireRelease(
-        Effect.sync(() => {
+      const {
+        resource: { player, chain },
+        close
+      } = yield* releasable(
+        () => {
           const chain = buildChain(options, output)
           const player = bufferPlayer(sound, options, segment, chain, () => bus.finish(new Ended()))
           return { player, chain }
-        }),
-        ({ player, chain }) =>
-          Effect.sync(() => {
-            player.stop()
-            chain.release()
-            bus.finish(new Stopped())
-          })
+        },
+        ({ player, chain }) => {
+          player.stop()
+          chain.release()
+          bus.finish(new Stopped())
+        }
       )
+      bus.releaseOnEnd(close)
       return makeVoice(ended, bus, chain, player)
     })
 
@@ -658,6 +710,14 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       return new LoadError({ source: url, reason })
     }
 
+    /**
+     * Stream elements that finished and wait for the next stream. A browser only lets an element
+     * play after a user gesture and an element is routed into the graph once for good, so reusing
+     * one lets a stream that starts later (the next track, from a timer) play where a new element
+     * would be refused, and spares a media element per stream.
+     */
+    const idleStreams: Array<StreamSlot> = []
+
     const startStream = Effect.fnUntraced(function* (
       url: string,
       options: PlayOptions,
@@ -670,12 +730,28 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       const ended = yield* Deferred.make<void>()
       const bus = voiceBus(ended, track)
       const onEnded = () => bus.finish(new Ended())
-      // Released as soon as the stream fails or is interrupted, not only when the scope closes.
-      let released = false
-      const release = (element: MediaElementLike, source: AudioNodeLike, chain: Chain) =>
-        Effect.suspend(() => {
-          if (released) return Effect.void
-          released = true
+      const newSlot = (): StreamSlot => {
+        const element = createMediaElement()
+        // Without CORS the browser silences a cross-origin element routed into the audio graph.
+        element.crossOrigin = "anonymous"
+        element.preload = "auto"
+        return { element, source: ctx.createMediaElementSource(element) }
+      }
+      // Released as soon as the voice ends, fails or is interrupted, not only when the scope closes.
+      const {
+        resource: { element, chain },
+        close
+      } = yield* releasable(
+        () => {
+          const { element, source } = idleStreams.pop() ?? newSlot()
+          element.loop = options.loop ?? false
+          element.playbackRate = options.rate ?? 1
+          const chain = buildChain(options, output)
+          chain.setInput(source)
+          element.addEventListener("ended", onEnded)
+          return { element, source, chain }
+        },
+        ({ element, source, chain }) => {
           element.removeEventListener("ended", onEnded)
           element.pause()
           // Dropping the source and reloading is how a media element lets go of its connection.
@@ -683,25 +759,14 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
           element.load()
           source.disconnect()
           chain.release()
+          // A failed element is dropped; a sound one waits for the next stream.
+          if (element.error === null && idleStreams.length < maxIdleStreams) {
+            idleStreams.push({ element, source })
+          }
           bus.finish(new Stopped())
-          return Effect.void
-        })
-      const { element, source, chain } = yield* Effect.acquireRelease(
-        Effect.sync(() => {
-          const element = createMediaElement()
-          // Without CORS the browser silences a cross-origin element routed into the audio graph.
-          element.crossOrigin = "anonymous"
-          element.preload = "auto"
-          element.loop = options.loop ?? false
-          if (options.rate !== undefined) element.playbackRate = options.rate
-          const source = ctx.createMediaElementSource(element)
-          const chain = buildChain(options, output)
-          chain.setInput(source)
-          element.addEventListener("ended", onEnded)
-          return { element, source, chain }
-        }),
-        ({ element, source, chain }) => release(element, source, chain)
+        }
       )
+      bus.releaseOnEnd(close)
       yield* Effect.callback<void, LoadError>((resume) => {
         const cleanup = () => {
           element.removeEventListener("canplay", onReady)
@@ -726,7 +791,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
             catch: (cause) => new PlaybackBlocked({ source: url, cause })
           })
         ),
-        Effect.onError(() => release(element, source, chain))
+        Effect.onError(() => Effect.sync(close))
       )
       let paused = false
       const player: Player = {
@@ -755,7 +820,8 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
         setLoop: (loop) => {
           element.loop = loop
         },
-        stop: () => element.pause()
+        // The end of the voice releases the element, which pauses it.
+        stop: () => undefined
       }
       return makeVoice(ended, bus, chain, player)
     })
