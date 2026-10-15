@@ -406,4 +406,20 @@ describe("promise facade on an asynchronous platform layer", () => {
     assert.lengthOf(rethrown, 2)
     await audio.dispose()
   })
+
+  it("stopAll stops the voices of the master and of a group", async () => {
+    const { ctx, audio } = setup()
+    const sound = new Sound({ buffer: { duration: 4 } as AudioBuffer, source: "a.wav" })
+    const music = audio.group("music")
+    const first = audio.play(sound)
+    const second = music.play(sound)
+    music.stopAll()
+    await second.ended
+    assert.strictEqual(ctx.sources[1]?.stops, 1)
+    assert.strictEqual(ctx.sources[0]?.stops, 0)
+    audio.stopAll()
+    await first.ended
+    assert.strictEqual(ctx.sources[0]?.stops, 1)
+    await audio.dispose()
+  })
 })

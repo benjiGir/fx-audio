@@ -70,6 +70,8 @@ export interface PromiseGroup {
    * before a user gesture, and throws a `SchemaError` on invalid options.
    */
   stream(url: string, options?: unknown): Promise<PromiseVoice>
+  /** Stop every voice playing through this group (on the master, every voice): Howler's `Howler.stop()`. */
+  stopAll(): void
   /** Throws a `SchemaError` on a negative or non-finite volume. */
   setVolume(volume: number): void
   /** Linear fade, `milliseconds` long. Throws a `SchemaError` on a negative or non-finite volume. */
@@ -194,6 +196,7 @@ const facade = (
       const decoded = decodeOptions(options ?? {})
       return wrap(await runtime.runPromise(withScope(group.stream(url, decoded))))
     },
+    stopAll: () => runtime.runSync(group.stopAll),
     setVolume: (volume) => runtime.runSync(group.setVolume(volume)),
     fadeTo: (volume, milliseconds) =>
       runtime.runSync(group.fadeTo(volume, `${milliseconds} millis`)),

@@ -131,6 +131,11 @@ export interface Group {
     url: string,
     options?: PlayOptions
   ) => Effect.Effect<Voice, LoadError | PlaybackBlocked, Scope.Scope>
+  /**
+   * Stop every voice playing through this group, Howler's `Howler.stop()` for the master. A voice
+   * started afterwards plays normally, and a stream still waiting to start is not reached.
+   */
+  readonly stopAll: Effect.Effect<void>
   /** Set the volume at once, cancelling a fade in progress. Dies on a negative or non-finite volume. */
   readonly setVolume: (volume: number) => Effect.Effect<void>
   /** Linear fade to `volume`. While muted, only the volume restored by `unmute` changes. */
@@ -162,20 +167,29 @@ const setVector = (
   params[2].value = z
 }
 
+/** Adds a stop function to a group's set of playing voices, and returns the way to remove it. */
+type Tracker = (stop: () => void) => () => void
+
 const isLast = (event: VoiceEvent) => event._tag === "stop" || event._tag === "end"
 
 /**
  * The events of one voice. The hub is only built when someone asks for the stream, and
  * `finish` is the one place a voice ends: it sends the last event, then completes `ended`.
  */
-const voiceBus = (ended: Deferred.Deferred<void>) => {
+const voiceBus = (ended: Deferred.Deferred<void>, track: Tracker) => {
   let hub: PubSub.PubSub<VoiceEvent> | undefined
+  let untrack: (() => void) | undefined
   return {
+    /** Let `stopAll` reach this voice until it ends. */
+    register: (stop: () => void) => {
+      untrack = track(stop)
+    },
     emit: (event: VoiceEvent) => {
       if (hub !== undefined) PubSub.publishUnsafe(hub, event)
     },
     finish: (last: Stopped | Ended) => {
       if (Deferred.isDoneUnsafe(ended)) return
+      untrack?.()
       if (hub !== undefined) PubSub.publishUnsafe(hub, last)
       Deferred.doneUnsafe(ended, Effect.void)
     },
@@ -251,6 +265,8 @@ export class Audio extends Context.Service<
       url: string,
       options?: PlayOptions
     ): Effect.Effect<Voice, LoadError | PlaybackBlocked, Scope.Scope>
+    /** Stop every voice playing, in every group: Howler's `Howler.stop()`. See `Group.stopAll`. */
+    readonly stopAll: Effect.Effect<void>
     /** The group every other group and every plain `play` ends up in: Howler's global volume and mute. */
     readonly master: Group
     /**
@@ -552,6 +568,11 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       player: Player
     ): Voice => {
       const alive = () => !Deferred.isDoneUnsafe(ended)
+      const stop = () => {
+        player.stop()
+        bus.finish(new Stopped())
+      }
+      bus.register(stop)
       // Once a voice has ended nothing is left to pause, move or restart.
       const whileAlive = (act: () => void) =>
         Effect.sync(() => {
@@ -560,10 +581,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       return {
         ended: Deferred.await(ended),
         events: bus.events,
-        stop: Effect.sync(() => {
-          player.stop()
-          bus.finish(new Stopped())
-        }),
+        stop: Effect.sync(stop),
         pause: whileAlive(() => {
           if (player.paused()) return
           player.pause()
@@ -607,10 +625,11 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       sound: Sound,
       options: PlayOptions,
       segment: SpriteSegment | undefined,
-      output: AudioNodeLike
+      output: AudioNodeLike,
+      track: Tracker
     ): Effect.fn.Return<Voice, never, Scope.Scope> {
       const ended = yield* Deferred.make<void>()
-      const bus = voiceBus(ended)
+      const bus = voiceBus(ended, track)
       const { player, chain } = yield* Effect.acquireRelease(
         Effect.sync(() => {
           const chain = buildChain(options, output)
@@ -642,13 +661,14 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
     const startStream = Effect.fnUntraced(function* (
       url: string,
       options: PlayOptions,
-      output: AudioNodeLike
+      output: AudioNodeLike,
+      track: Tracker
     ): Effect.fn.Return<Voice, LoadError | PlaybackBlocked, Scope.Scope> {
       if (createMediaElement === undefined) {
         return yield* new LoadError({ source: url, reason: new StreamingUnavailable() })
       }
       const ended = yield* Deferred.make<void>()
-      const bus = voiceBus(ended)
+      const bus = voiceBus(ended, track)
       const onEnded = () => bus.finish(new Ended())
       // Released as soon as the stream fails or is interrupted, not only when the scope closes.
       let released = false
@@ -740,7 +760,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       return makeVoice(ended, bus, chain, player)
     })
 
-    const spriteOn = (output: AudioNodeLike) =>
+    const spriteOn = (output: AudioNodeLike, track: Tracker) =>
       Effect.fnUntraced(function* (
         sheet: SpriteSheet,
         name: string,
@@ -751,13 +771,14 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
         if (segment === undefined) {
           return yield* new UnknownSprite({ name, available: Object.keys(sheet.segments) })
         }
-        return yield* startVoice(sheet.sound, options, segment, output)
+        return yield* startVoice(sheet.sound, options, segment, output, track)
       })
 
     const buildGroup = Effect.fnUntraced(function* (
-      output: AudioNodeLike
+      output: AudioNodeLike,
+      parent?: Tracker
     ): Effect.fn.Return<
-      { readonly group: Group; readonly node: AudioNodeLike },
+      { readonly group: Group; readonly node: AudioNodeLike; readonly track: Tracker },
       never,
       Scope.Scope
     > {
@@ -803,19 +824,39 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
         Ref.set(muted, false).pipe(Effect.andThen(Ref.get(volume)), Effect.flatMap(applyNow))
       )
 
+      // The voices playing through this group, which also count for the group it feeds.
+      const playing = new Set<() => void>()
+      const track: Tracker = (stop) => {
+        playing.add(stop)
+        const untrackParent = parent?.(stop)
+        return () => {
+          playing.delete(stop)
+          untrackParent?.()
+        }
+      }
+      // Stopping a voice removes it from the set, so walk a copy.
+      const stopAll = Effect.sync(() => {
+        for (const stop of Array.from(playing)) stop()
+      })
+
       const group: Group = {
-        play: (sound, options = {}) => startVoice(sound, options, undefined, node),
-        playSprite: spriteOn(node),
-        stream: (url, options = {}) => startStream(url, options, node),
+        play: (sound, options = {}) => startVoice(sound, options, undefined, node, track),
+        playSprite: spriteOn(node, track),
+        stream: (url, options = {}) => startStream(url, options, node, track),
+        stopAll,
         setVolume,
         fadeTo,
         mute,
         unmute
       }
-      return { group, node }
+      return { group, node, track }
     })
 
-    const { group: master, node: masterNode } = yield* buildGroup(ctx.destination)
+    const {
+      group: master,
+      node: masterNode,
+      track: trackMaster
+    } = yield* buildGroup(ctx.destination)
 
     // Groups live as long as the layer, whichever scope first asks for them.
     const layerScope = yield* Effect.scope
@@ -826,7 +867,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       return yield* Effect.gen(function* () {
         const existing = groups.get(name)
         if (existing !== undefined) return existing
-        const { group } = yield* buildGroup(masterNode).pipe(
+        const { group } = yield* buildGroup(masterNode, trackMaster).pipe(
           Effect.provideService(Scope.Scope, layerScope)
         )
         groups.set(name, group)
@@ -880,6 +921,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       play: master.play,
       playSprite: master.playSprite,
       stream: master.stream,
+      stopAll: master.stopAll,
       master,
       group,
       listener: listenerService,
