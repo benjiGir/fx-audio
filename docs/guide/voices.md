@@ -43,3 +43,33 @@ with `PlaybackBlocked` if the browser refuses to restart it; the voice then stay
 
 `setRate` changes the pitch with the speed, as `rate` does in Howler. Turning `loop` on or off starts a new source at the
 current position, like a seek.
+
+## Events
+
+A voice tells what happens to it, like Howler's `on`. With Effect, `voice.events` is a stream:
+
+<<< @/examples/voices.ts#events-effect{ts}
+
+With the promise facade, `voice.on(type, listener)` calls the listener for each event of that type and returns a
+function that stops listening:
+
+<<< @/examples/voices.ts#events-promise{ts}
+
+| `_tag` | When | Extra field |
+| --- | --- | --- |
+| `pause` | `pause` held the voice | |
+| `resume` | `resume` let it carry on | |
+| `seek` | `seek` moved it | `position`, in milliseconds, after wrapping a loop |
+| `rate` | `setRate` changed the speed | `rate` |
+| `volume` | `setVolume` set the volume. A fade sends nothing | `volume` |
+| `loop` | `setLoop` turned looping on or off | `loop` |
+| `stop` | `stop`, or the scope closed. The last event | |
+| `end` | The sound played to its end, or a `seek` went past it. The last event | |
+
+- The stream starts at the moment it runs: earlier events are not replayed, and the stream of a voice that has already
+  ended is empty. It completes after `stop` or `end`.
+- A voice nobody listens to pays nothing for events.
+- Pausing a paused voice, or resuming one that plays, sends nothing, and `resume` sends nothing when it fails.
+- A listener given to `on` that throws does not stop the voice or the other listeners: the error is rethrown
+  outside, where the page reports it.
+- Howler's `end` also fires at each pass of a loop. `end` here is the end of the voice only.

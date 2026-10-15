@@ -3,10 +3,12 @@ import * as Deferred from "effect/Deferred"
 import * as Duration from "effect/Duration"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
+import * as PubSub from "effect/PubSub"
 import * as Ref from "effect/Ref"
 import * as Schema from "effect/Schema"
 import * as Scope from "effect/Scope"
 import * as Semaphore from "effect/Semaphore"
+import * as Stream from "effect/Stream"
 import type {
   AudioNodeLike,
   AudioParamLike,
@@ -26,22 +28,38 @@ import {
   UnsupportedFormat
 } from "./errors.ts"
 import {
+  Ended,
+  LoopChanged,
   Pan,
+  Paused,
   type PlayOptions,
   Position,
   Rate,
+  RateChanged,
+  Resumed,
+  Seeked,
   Sound,
   SpatialOptions,
   type SpriteSegment,
   type SpriteSheet,
+  Stopped,
   Vector3,
-  Volume
+  type VoiceEvent,
+  Volume,
+  VolumeChanged
 } from "./model.ts"
 
 export interface Voice {
   /** Completes when playback ends naturally, the voice is stopped or its scope closes. */
   readonly ended: Effect.Effect<void>
   readonly stop: Effect.Effect<void>
+  /**
+   * What happens to this voice from the moment the stream starts running: `pause`, `resume`,
+   * `seek`, `rate`, `volume`, `loop`, then `stop` or `end`, after which the stream completes.
+   * Events from before are not replayed, and the stream of a voice that has already ended is
+   * empty. A voice nobody listens to pays nothing for it.
+   */
+  readonly events: Stream.Stream<VoiceEvent>
   /** Hold the voice where it is. Pausing a paused voice does nothing, and `ended` stays pending. */
   readonly pause: Effect.Effect<void>
   /**
@@ -144,9 +162,43 @@ const setVector = (
   params[2].value = z
 }
 
+const isLast = (event: VoiceEvent) => event._tag === "stop" || event._tag === "end"
+
+/**
+ * The events of one voice. The hub is only built when someone asks for the stream, and
+ * `finish` is the one place a voice ends: it sends the last event, then completes `ended`.
+ */
+const voiceBus = (ended: Deferred.Deferred<void>) => {
+  let hub: PubSub.PubSub<VoiceEvent> | undefined
+  return {
+    emit: (event: VoiceEvent) => {
+      if (hub !== undefined) PubSub.publishUnsafe(hub, event)
+    },
+    finish: (last: Stopped | Ended) => {
+      if (Deferred.isDoneUnsafe(ended)) return
+      if (hub !== undefined) PubSub.publishUnsafe(hub, last)
+      Deferred.doneUnsafe(ended, Effect.void)
+    },
+    events: Stream.unwrap(
+      Effect.suspend(() =>
+        Deferred.isDoneUnsafe(ended)
+          ? Effect.succeed(Stream.empty)
+          : (hub === undefined
+              ? PubSub.unbounded<VoiceEvent>().pipe(Effect.map((created) => (hub ??= created)))
+              : Effect.succeed(hub)
+            ).pipe(Effect.map((shared) => Stream.fromPubSub(shared).pipe(Stream.takeUntil(isLast))))
+      )
+    )
+  }
+}
+
+type VoiceBus = ReturnType<typeof voiceBus>
+
 /** What differs between a voice on a decoded buffer and one on a media element. Times are in seconds. */
 interface Player {
+  /** Only called on a voice that is playing. */
   readonly pause: () => void
+  /** Only run on a voice that is paused. */
   readonly resume: Effect.Effect<void, PlaybackBlocked>
   readonly seek: (seconds: number) => void
   readonly position: () => number
@@ -448,13 +500,11 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       launch(0)
       return {
         pause: () => {
-          if (paused) return
           offset = position()
           paused = true
           detach()
         },
         resume: Effect.sync(() => {
-          if (!paused) return
           paused = false
           launch(offset)
         }),
@@ -495,7 +545,12 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       }
     }
 
-    const makeVoice = (ended: Deferred.Deferred<void>, chain: Chain, player: Player): Voice => {
+    const makeVoice = (
+      ended: Deferred.Deferred<void>,
+      bus: VoiceBus,
+      chain: Chain,
+      player: Player
+    ): Voice => {
       const alive = () => !Deferred.isDoneUnsafe(ended)
       // Once a voice has ended nothing is left to pause, move or restart.
       const whileAlive = (act: () => void) =>
@@ -504,24 +559,47 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
         })
       return {
         ended: Deferred.await(ended),
-        stop: Effect.suspend(() => {
+        events: bus.events,
+        stop: Effect.sync(() => {
           player.stop()
-          return Deferred.succeed(ended, undefined)
-        }).pipe(Effect.asVoid),
-        pause: whileAlive(player.pause),
-        resume: Effect.suspend(() => (alive() ? player.resume : Effect.void)),
+          bus.finish(new Stopped())
+        }),
+        pause: whileAlive(() => {
+          if (player.paused()) return
+          player.pause()
+          bus.emit(new Paused())
+        }),
+        resume: Effect.suspend(() => {
+          if (!alive() || !player.paused()) return Effect.void
+          return player.resume.pipe(Effect.andThen(Effect.sync(() => bus.emit(new Resumed()))))
+        }),
         seek: (milliseconds) => {
           const seconds = decodePosition(milliseconds) / 1000
-          return whileAlive(() => player.seek(seconds))
+          return whileAlive(() => {
+            player.seek(seconds)
+            // A seek past the end of a voice that does not loop ends it instead.
+            if (alive()) bus.emit(new Seeked({ position: player.position() * 1000 }))
+          })
         },
         position: Effect.sync(() => player.position() * 1000),
         paused: Effect.sync(player.paused),
         setRate: (requested) => {
           const rate = decodeRate(requested)
-          return whileAlive(() => player.setRate(rate))
+          return whileAlive(() => {
+            player.setRate(rate)
+            bus.emit(new RateChanged({ rate }))
+          })
         },
-        setLoop: (loop) => whileAlive(() => player.setLoop(loop)),
-        ...chain.controls
+        setLoop: (loop) =>
+          whileAlive(() => {
+            player.setLoop(loop)
+            bus.emit(new LoopChanged({ loop }))
+          }),
+        ...chain.controls,
+        setVolume: (volume) =>
+          chain.controls
+            .setVolume(volume)
+            .pipe(Effect.andThen(Effect.sync(() => bus.emit(new VolumeChanged({ volume })))))
       }
     }
 
@@ -532,22 +610,21 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       output: AudioNodeLike
     ): Effect.fn.Return<Voice, never, Scope.Scope> {
       const ended = yield* Deferred.make<void>()
+      const bus = voiceBus(ended)
       const { player, chain } = yield* Effect.acquireRelease(
         Effect.sync(() => {
           const chain = buildChain(options, output)
-          const player = bufferPlayer(sound, options, segment, chain, () =>
-            Deferred.doneUnsafe(ended, Effect.void)
-          )
+          const player = bufferPlayer(sound, options, segment, chain, () => bus.finish(new Ended()))
           return { player, chain }
         }),
         ({ player, chain }) =>
-          Effect.suspend(() => {
+          Effect.sync(() => {
             player.stop()
             chain.release()
-            return Deferred.succeed(ended, undefined)
+            bus.finish(new Stopped())
           })
       )
-      return makeVoice(ended, chain, player)
+      return makeVoice(ended, bus, chain, player)
     })
 
     /** The browser's own mapping of `MediaError.code`; a missing or aborted error counts as the network. */
@@ -571,7 +648,8 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
         return yield* new LoadError({ source: url, reason: new StreamingUnavailable() })
       }
       const ended = yield* Deferred.make<void>()
-      const onEnded = () => Deferred.doneUnsafe(ended, Effect.void)
+      const bus = voiceBus(ended)
+      const onEnded = () => bus.finish(new Ended())
       // Released as soon as the stream fails or is interrupted, not only when the scope closes.
       let released = false
       const release = (element: MediaElementLike, source: AudioNodeLike, chain: Chain) =>
@@ -585,7 +663,8 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
           element.load()
           source.disconnect()
           chain.release()
-          return Deferred.succeed(ended, undefined)
+          bus.finish(new Stopped())
+          return Effect.void
         })
       const { element, source, chain } = yield* Effect.acquireRelease(
         Effect.sync(() => {
@@ -632,23 +711,18 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       let paused = false
       const player: Player = {
         pause: () => {
-          if (paused) return
           element.pause()
           paused = true
         },
-        resume: Effect.suspend(() =>
-          paused
-            ? Effect.tryPromise({
-                try: () => element.play(),
-                catch: (cause) => new PlaybackBlocked({ source: url, cause })
-              }).pipe(
-                Effect.andThen(
-                  Effect.sync(() => {
-                    paused = false
-                  })
-                )
-              )
-            : Effect.void
+        resume: Effect.tryPromise({
+          try: () => element.play(),
+          catch: (cause) => new PlaybackBlocked({ source: url, cause })
+        }).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              paused = false
+            })
+          )
         ),
         seek: (seconds) => {
           element.currentTime = seconds
@@ -663,7 +737,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
         },
         stop: () => element.pause()
       }
-      return makeVoice(ended, chain, player)
+      return makeVoice(ended, bus, chain, player)
     })
 
     const spriteOn = (output: AudioNodeLike) =>

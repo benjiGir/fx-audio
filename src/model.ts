@@ -97,3 +97,48 @@ export class SpriteSheet extends Schema.Class<SpriteSheet>("fx-audio/SpriteSheet
   sound: Sound,
   segments: Schema.Record(Schema.String, SpriteSegment)
 }) {}
+
+/** The voice was held by `pause`. */
+export class Paused extends Schema.TaggedClass<Paused>()("pause", {}) {}
+
+/** The voice carried on after `pause`. */
+export class Resumed extends Schema.TaggedClass<Resumed>()("resume", {}) {}
+
+/** The voice jumped to `position`, in milliseconds from its start. */
+export class Seeked extends Schema.TaggedClass<Seeked>()("seek", { position: Position }) {}
+
+/** The voice changed speed. */
+export class RateChanged extends Schema.TaggedClass<RateChanged>()("rate", { rate: Rate }) {}
+
+/** The voice's volume was set at once with `setVolume`. A fade does not send it. */
+export class VolumeChanged extends Schema.TaggedClass<VolumeChanged>()("volume", {
+  volume: Volume
+}) {}
+
+/** Looping was turned on or off with `setLoop`. */
+export class LoopChanged extends Schema.TaggedClass<LoopChanged>()("loop", {
+  loop: Schema.Boolean
+}) {}
+
+/** The voice was stopped, with `stop` or by its scope closing. Always the last event. */
+export class Stopped extends Schema.TaggedClass<Stopped>()("stop", {}) {}
+
+/** The voice played to its end. Always the last event. */
+export class Ended extends Schema.TaggedClass<Ended>()("end", {}) {}
+
+/**
+ * Everything that happens to a voice, told by its `events` stream. Match on `_tag`, which
+ * carries the Howler name of the event: `pause`, `resume`, `seek`, `rate`, `volume`, `loop`,
+ * `stop` and `end`.
+ */
+export const VoiceEvent = Schema.Union([
+  Paused,
+  Resumed,
+  Seeked,
+  RateChanged,
+  VolumeChanged,
+  LoopChanged,
+  Stopped,
+  Ended
+])
+export type VoiceEvent = typeof VoiceEvent.Type

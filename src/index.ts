@@ -27,4 +27,20 @@ export {
   UnknownSprite,
   UnsupportedFormat
 } from "./errors.ts"
-export { PlayOptions, Sound, SpatialOptions, SpriteSegment, SpriteSheet, Vector3 } from "./model.ts"
+export {
+  Ended,
+  LoopChanged,
+  Paused,
+  PlayOptions,
+  RateChanged,
+  Resumed,
+  Seeked,
+  Sound,
+  SpatialOptions,
+  SpriteSegment,
+  SpriteSheet,
+  Stopped,
+  Vector3,
+  VoiceEvent,
+  VolumeChanged
+} from "./model.ts"
