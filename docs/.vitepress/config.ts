@@ -1,4 +1,5 @@
 import { existsSync, readFileSync } from "node:fs"
+import { fileURLToPath } from "node:url"
 import { defineConfig, type DefaultTheme } from "vitepress"
 
 // Written by `typedoc` (see typedoc.json) before every build of the site.
@@ -14,6 +15,21 @@ export default defineConfig({
   // Served from https://benjigir.github.io/fx-audio/
   base: "/fx-audio/",
   cleanUrls: true,
+  // The playground runs the library from source, as the type-checker resolves it (see tsconfig paths).
+  vite: {
+    resolve: {
+      alias: [
+        {
+          find: /^fx-audio$/,
+          replacement: fileURLToPath(new URL("../../src/index.ts", import.meta.url))
+        },
+        {
+          find: /^fx-audio\/(.*)$/,
+          replacement: fileURLToPath(new URL("../../src/$1.ts", import.meta.url))
+        }
+      ]
+    }
+  },
   lastUpdated: true,
   // The reference is generated, so there is no file to edit.
   transformPageData(pageData) {
@@ -22,6 +38,7 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: "Guide", link: "/guide/getting-started" },
+      { text: "Playground", link: "/playground" },
       { text: "API", link: "/api/" },
       { text: "Contributing", link: "/contributing" }
     ],
@@ -51,6 +68,7 @@ export default defineConfig({
             { text: "Codecs", link: "/guide/codecs" }
           ]
         },
+        { text: "Try it", items: [{ text: "Playground", link: "/playground" }] },
         { text: "Benchmark", items: [{ text: "Against Howler.js", link: "/guide/benchmark" }] },
         { text: "Reference", items: [{ text: "API reference", link: "/api/" }] },
         { text: "Project", items: [{ text: "Contributing", link: "/contributing" }] }
