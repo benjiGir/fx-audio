@@ -457,6 +457,32 @@ describe("promise facade on an asynchronous platform layer", () => {
     await audio.dispose()
   })
 
+  it("ducks a group while another plays, until the returned function is called", async () => {
+    const { ctx, audio } = setup()
+    const sound = new Sound({ buffer: { duration: 4 } as AudioBuffer, source: "a.wav" })
+    const music = audio.group("music")
+    const speech = audio.group("speech")
+    const stopDucking = music.duck(speech, { volume: 0.25, attack: 0 })
+    const voice = speech.play(sound)
+    assert.strictEqual(gainAt(ctx, 1).gain.calls.at(-1)?.value, 0.25)
+    voice.stop()
+    assert.strictEqual(gainAt(ctx, 1).gain.calls.at(-1)?.value, 1)
+    stopDucking()
+    const calls = gainAt(ctx, 1).gain.calls.length
+    speech.play(sound)
+    assert.strictEqual(gainAt(ctx, 1).gain.calls.length, calls)
+    // The audio object stands for the master, as a target and as a trigger.
+    audio.duck(speech, { volume: 0.5, attack: 0 })
+    assert.strictEqual(gainAt(ctx, 0).gain.calls.at(-1)?.value, 0.5)
+    music.duck(audio)
+    assert.throws(
+      () => music.duck(createAudio(FakeAudioContextLive(makeFakeContext())).group("x")),
+      TypeError
+    )
+    assert.throws(() => music.duck(speech, { volume: 2 }))
+    await audio.dispose()
+  })
+
   it("on listens to one kind of event until the returned function is called", async () => {
     const { audio } = setup()
     const sound = new Sound({ buffer: { duration: 4 } as AudioBuffer, source: "a.wav" })

@@ -338,6 +338,37 @@ describe("the audio graph on a real engine (offline render)", () => {
     })
   )
 
+  // Firefox renders an offline context in one go and runs the `ended` callbacks afterwards, so
+  // the release cannot be heard in a render: compare the level while the trigger plays instead.
+  const duckedLevel = (ducked: boolean) => {
+    const { layer, render } = makeOfflineContext(0.4)
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const music = yield* audio.group("music")
+      const speech = yield* audio.group("speech")
+      if (ducked) yield* music.duck(speech, { volume: 0.25, attack: 0, release: 0 })
+      const tone = yield* audio.decode(makeWav(0.4), "tone.wav")
+      const blip = yield* audio.decode(makeWav(0.4), "blip.wav")
+      yield* music.play(tone, { volume: 0.8 })
+      // A silent trigger: it ducks the music without being heard itself.
+      yield* speech.play(blip, { volume: 0 })
+      return peak(yield* Effect.promise(render))
+    }).pipe(
+      Effect.scoped,
+      Effect.timeout("10 seconds"),
+      Effect.provide(AudioLive.pipe(Layer.provide(layer)))
+    )
+  }
+
+  it.live("a ducked group is quieter than the same group not ducked", () =>
+    Effect.gen(function* () {
+      const full = yield* duckedLevel(false)
+      const ducked = yield* duckedLevel(true)
+      assert.isAbove(full, 0.05)
+      assert.closeTo(ducked / full, 0.25, 0.03)
+    })
+  )
+
   it.live("a paused voice renders silence and does not end, a resumed one plays", () => {
     const { layer, render } = makeOfflineContext(0.3)
     return Effect.gen(function* () {

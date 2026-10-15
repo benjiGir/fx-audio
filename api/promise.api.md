@@ -45,6 +45,7 @@ export interface PromiseAudio extends PromiseGroup {
 export interface PromiseGroup {
     analyser(): PromiseAnalyser;
     crossfade(out: PromiseVoice, sound: Sound, milliseconds: number, options?: unknown): PromiseVoice;
+    duck(trigger: PromiseGroup, options?: unknown): () => void;
     fadeTo(volume: number, milliseconds: number): void;
     // (undocumented)
     mute(): void;

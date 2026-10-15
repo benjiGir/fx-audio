@@ -18,7 +18,7 @@ import { BrowserAudioContextLive } from "./context.ts"
 import type { Analyser, Group, Listener, Voice } from "./core.ts"
 import { Audio, AudioLive } from "./core.ts"
 import type { Sound, SpriteSheet, Vector3, VoiceEvent } from "./model.ts"
-import { AudioEffect, PlayOptions } from "./model.ts"
+import { AudioEffect, DuckOptions, PlayOptions } from "./model.ts"
 
 /** The level and spectrum of a voice or a group, see `Analyser`. Each method reads the signal as it is now. */
 export interface PromiseAnalyser {
@@ -111,6 +111,13 @@ export interface PromiseGroup {
    * `undefined` removes the cap. Throws a `SchemaError` on anything but a whole number of one or more.
    */
   setMaxVoices(limit: number | undefined): void
+  /**
+   * Lower this group while `trigger` has voices playing and bring it back when it has none, over
+   * `options.attack` and `options.release` milliseconds, down to `options.volume` (0.3) times its own
+   * volume. Returns a function that ends the ducking. Throws a `SchemaError` on invalid options and a
+   * `TypeError` when `trigger` is not a group of this audio.
+   */
+  duck(trigger: PromiseGroup, options?: unknown): () => void
   /** Throws a `SchemaError` on a negative or non-finite volume. */
   setVolume(volume: number): void
   /** Linear fade, `milliseconds` long. Throws a `SchemaError` on a negative or non-finite volume. */
@@ -138,6 +145,7 @@ export interface PromiseAudio extends PromiseGroup {
 
 const decodeOptions = Schema.decodeUnknownSync(PlayOptions)
 const decodeEffects = Schema.decodeUnknownSync(Schema.Array(AudioEffect))
+const decodeDuck = Schema.decodeUnknownSync(DuckOptions)
 
 type Runtime = ManagedRuntime.ManagedRuntime<Audio, never>
 
@@ -257,7 +265,14 @@ const facade = (
     effect.pipe(Effect.provideService(Scope.Scope, scope))
   const inScope = <A, E>(effect: Effect.Effect<A, E, Scope.Scope>) =>
     runtime.runSync(withScope(effect))
-  const wrapGroup = (group: Group): PromiseGroup => ({
+  // `duck` is given the facade's group and needs the group behind it.
+  const groupsOf = new WeakMap<PromiseGroup, Group>()
+  const wrapGroup = (group: Group): PromiseGroup => {
+    const wrapped = wrapGroupMethods(group)
+    groupsOf.set(wrapped, group)
+    return wrapped
+  }
+  const wrapGroupMethods = (group: Group): PromiseGroup => ({
     play: (sound, options) => wrap(inScope(group.play(sound, decodeOptions(options ?? {})))),
     playSprite: (sheet, name, options) =>
       wrap(inScope(group.playSprite(sheet, name, decodeOptions(options ?? {})))),
@@ -274,6 +289,15 @@ const facade = (
         )
       )
     },
+    duck: (trigger, options) => {
+      const from = groupsOf.get(trigger)
+      if (from === undefined) throw new TypeError("duck needs a group of this audio")
+      const own = Scope.forkUnsafe(scope)
+      runtime.runSync(
+        group.duck(from, decodeDuck(options ?? {})).pipe(Effect.provideService(Scope.Scope, own))
+      )
+      return () => runtime.runSync(Scope.close(own, Exit.void))
+    },
     stopAll: () => runtime.runSync(group.stopAll),
     analyser: () => analyserOf(group.analyser),
     setEffects: (effects) => runtime.runSync(group.setEffects(decodeEffects(effects))),
@@ -288,7 +312,7 @@ const facade = (
   const master = wrapGroup(audio.master)
   const listener = audio.listener satisfies Listener
   const groups = new Map<string, PromiseGroup>()
-  return {
+  const facadeAudio: PromiseAudio = {
     ...master,
     master,
     listener: {
@@ -314,4 +338,7 @@ const facade = (
       await runtime.dispose()
     }
   }
+  // The audio object is the master as well: it can duck and be a trigger like `audio.master`.
+  groupsOf.set(facadeAudio, audio.master)
+  return facadeAudio
 }
