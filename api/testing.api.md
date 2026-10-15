@@ -20,13 +20,50 @@ export const FakeAudioContextLive: (ctx: AudioContextLike, options?: {
 }) => Layer.Layer<AudioContextService>;
 
 // @public
+export interface FakeBuffer {
+    // (undocumented)
+    readonly duration: number;
+    // (undocumented)
+    getChannelData(channel: number): Float32Array;
+    // (undocumented)
+    readonly length: number;
+    // (undocumented)
+    readonly numberOfChannels: number;
+    // (undocumented)
+    readonly sampleRate: number;
+}
+
+// @public (undocumented)
+export interface FakeCompressor extends DynamicsCompressorNodeLike, FakeEffectNode {
+    // (undocumented)
+    readonly attack: FakeParam;
+    // (undocumented)
+    readonly knee: FakeParam;
+    // (undocumented)
+    readonly ratio: FakeParam;
+    // (undocumented)
+    readonly release: FakeParam;
+    // (undocumented)
+    readonly threshold: FakeParam;
+}
+
+// @public
 export interface FakeContext extends AudioContextLike {
     // (undocumented)
     readonly analysers: ReadonlyArray<FakeAnalyser>;
+    readonly buffers: ReadonlyArray<FakeBuffer>;
+    // (undocumented)
+    readonly compressors: ReadonlyArray<FakeCompressor>;
+    // (undocumented)
+    readonly convolvers: ReadonlyArray<FakeConvolver>;
     createMediaElement(): FakeMediaElement;
     // (undocumented)
     currentTime: number;
+    // (undocumented)
+    readonly delays: ReadonlyArray<FakeDelay>;
     readonly elements: ReadonlyArray<FakeMediaElement>;
+    // (undocumented)
+    readonly filters: ReadonlyArray<FakeFilter>;
     // (undocumented)
     readonly gains: ReadonlyArray<FakeGain>;
     // (undocumented)
@@ -36,6 +73,8 @@ export interface FakeContext extends AudioContextLike {
     readonly panners: ReadonlyArray<FakePanner>;
     playResult: () => Promise<void>;
     readonly resumes: number;
+    // (undocumented)
+    readonly sampleRate: number;
     // (undocumented)
     readonly sources: ReadonlyArray<FakeSource>;
     readonly spatialPanners: ReadonlyArray<FakeSpatialPanner>;
@@ -49,8 +88,36 @@ export interface FakeContextOptions {
 }
 
 // @public (undocumented)
+export interface FakeConvolver extends ConvolverNodeLike, FakeEffectNode {}
+
+// @public (undocumented)
+export interface FakeDelay extends DelayNodeLike, FakeEffectNode {
+    // (undocumented)
+    readonly delayTime: FakeParam;
+    readonly maxDelayTime: number;
+}
+
+// @public
+export interface FakeEffectNode extends AudioNodeLike {
+    readonly connections: ReadonlyArray<AudioNodeLike>;
+    // (undocumented)
+    readonly disconnects: number;
+}
+
+// @public (undocumented)
+export interface FakeFilter extends BiquadFilterNodeLike, FakeEffectNode {
+    // (undocumented)
+    readonly frequency: FakeParam;
+    // (undocumented)
+    readonly gain: FakeParam;
+    // (undocumented)
+    readonly Q: FakeParam;
+}
+
+// @public (undocumented)
 export interface FakeGain extends GainNodeLike {
     readonly connections: ReadonlyArray<AudioNodeLike>;
+    readonly disconnectedFrom: ReadonlyArray<AudioNodeLike | undefined>;
     // (undocumented)
     readonly disconnects: number;
     // (undocumented)

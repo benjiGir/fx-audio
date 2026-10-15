@@ -81,6 +81,70 @@ export class PlayOptions extends Schema.Class<PlayOptions>("fx-audio/PlayOptions
   startAt: Schema.optionalKey(Schema.Finite)
 }) {}
 
+const FilterType = Schema.Literals([
+  "lowpass",
+  "highpass",
+  "bandpass",
+  "notch",
+  "allpass",
+  "peaking",
+  "lowshelf",
+  "highshelf"
+])
+
+/**
+ * A biquad filter. `lowpass` cuts what is above `frequency` (muffled), `highpass` what is below
+ * (thin), `bandpass` and `notch` keep or remove a band around it. `peaking`, `lowshelf` and
+ * `highshelf` boost or cut by `gain` decibels. `q` is the sharpness of the band (1 by default).
+ */
+export class Filter extends Schema.TaggedClass<Filter>()("filter", {
+  type: FilterType,
+  /** In hertz. */
+  frequency: Schema.Finite.check(Schema.isGreaterThan(0)),
+  q: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThan(0))),
+  /** In decibels, for `peaking`, `lowshelf` and `highshelf` only. */
+  gain: Schema.optionalKey(Schema.Finite)
+}) {}
+
+/** Repeats the sound after `time` milliseconds (5000 at most). `feedback` feeds it back into the delay for more repeats, 0 to 0.95 (0.4 by default), `mix` is how much is added to the dry sound, 0 to 1 (0.5 by default). */
+export class Echo extends Schema.TaggedClass<Echo>()("echo", {
+  time: Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 5000 })),
+  feedback: Schema.optionalKey(
+    Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 0.95 }))
+  ),
+  mix: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 })))
+}) {}
+
+/**
+ * A room: the sound with a tail made of decaying noise. `seconds` is how long the tail lasts, 0.1 to
+ * 10 (2 by default), `decay` how fast it dies away, above 0 (2 by default, higher is quicker), `mix`
+ * how much is added to the dry sound, 0 to 1 (0.3 by default).
+ */
+export class Reverb extends Schema.TaggedClass<Reverb>()("reverb", {
+  seconds: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 0.1, maximum: 10 }))),
+  decay: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThan(0))),
+  mix: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 })))
+}) {}
+
+/**
+ * Evens out the loudness: what goes above `threshold` (decibels, -100 to 0, -24 by default) is
+ * brought down by `ratio` (1 to 20, 12 by default), starting gently over `knee` decibels (0 to 40, 30
+ * by default). `attack` and `release` are in seconds (0 to 1, 0.003 and 0.25 by default).
+ */
+export class Compressor extends Schema.TaggedClass<Compressor>()("compressor", {
+  threshold: Schema.optionalKey(
+    Schema.Finite.check(Schema.isBetween({ minimum: -100, maximum: 0 }))
+  ),
+  knee: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 40 }))),
+  ratio: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 1, maximum: 20 }))),
+  attack: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 }))),
+  release: Schema.optionalKey(Schema.Finite.check(Schema.isBetween({ minimum: 0, maximum: 1 })))
+}) {}
+
+/** One stage of a group's effect chain. */
+export const AudioEffect = Schema.Union([Filter, Echo, Reverb, Compressor])
+export type AudioEffect = typeof AudioEffect.Type
+
 /** A named slice of one sound. `start` and `duration` are in milliseconds, as in Howler. */
 export class SpriteSegment extends Schema.Class<SpriteSegment>("fx-audio/SpriteSegment")({
   start: Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0)),

@@ -44,6 +44,7 @@ export interface PromiseGroup {
     mute(): void;
     play(sound: Sound, options?: unknown): PromiseVoice;
     playSprite(sheet: SpriteSheet, name: string, options?: unknown): PromiseVoice;
+    setEffects(effects: ReadonlyArray<unknown>): void;
     setVolume(volume: number): void;
     stopAll(): void;
     stream(url: string, options?: unknown): Promise<PromiseVoice>;

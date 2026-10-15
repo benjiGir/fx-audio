@@ -60,6 +60,7 @@ export default defineConfig({
             { text: "Scheduling", link: "/guide/scheduling" },
             { text: "Groups and master", link: "/guide/groups" },
             { text: "Level meters", link: "/guide/analyser" },
+            { text: "Effects", link: "/guide/effects" },
             { text: "Stereo pan", link: "/guide/pan" },
             { text: "3D position", link: "/guide/spatial" },
             { text: "Streaming", link: "/guide/streaming" },

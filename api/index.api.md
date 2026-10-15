@@ -48,7 +48,17 @@ export interface AudioContextLike {
     // (undocumented)
     createAnalyser(): AnalyserNodeLike;
     // (undocumented)
+    createBiquadFilter(): BiquadFilterNodeLike;
+    // (undocumented)
+    createBuffer(channels: number, length: number, sampleRate: number): AudioBuffer;
+    // (undocumented)
     createBufferSource(): SourceNodeLike;
+    // (undocumented)
+    createConvolver(): ConvolverNodeLike;
+    // (undocumented)
+    createDelay(maxDelayTime: number): DelayNodeLike;
+    // (undocumented)
+    createDynamicsCompressor(): DynamicsCompressorNodeLike;
     // (undocumented)
     createGain(): GainNodeLike;
     // (undocumented)
@@ -70,11 +80,19 @@ export interface AudioContextLike {
     // (undocumented)
     resume(): Promise<void>;
     // (undocumented)
+    readonly sampleRate: number;
+    // (undocumented)
     readonly state: string;
 }
 
 // @public
 export class AudioContextService extends AudioContextService_base {}
+
+// @public
+export const AudioEffect: Schema.Union<readonly [typeof Filter, typeof Echo, typeof Reverb, typeof Compressor]>;
+
+// @public (undocumented)
+export type AudioEffect = typeof AudioEffect.Type;
 
 // @public
 export interface AudioListenerLike {
@@ -109,8 +127,7 @@ export const AudioLive: Layer.Layer<Audio_2, never, AudioContextService>;
 export interface AudioNodeLike {
     // (undocumented)
     connect(destination: AudioNodeLike): unknown;
-    // (undocumented)
-    disconnect(): void;
+    disconnect(destination?: AudioNodeLike): void;
 }
 
 // @public (undocumented)
@@ -125,14 +142,61 @@ export interface AudioParamLike {
     value: number;
 }
 
+// @public (undocumented)
+export interface BiquadFilterNodeLike extends AudioNodeLike {
+    // (undocumented)
+    readonly frequency: AudioParamLike;
+    // (undocumented)
+    readonly gain: AudioParamLike;
+    // (undocumented)
+    readonly Q: AudioParamLike;
+    // (undocumented)
+    type: "lowpass" | "highpass" | "bandpass" | "notch" | "allpass" | "peaking" | "lowshelf" | "highshelf";
+}
+
 // @public
 export const BrowserAudioContextLive: Layer.Layer<AudioContextService>;
 
 // @public
+export class Compressor extends Compressor_base {}
+
+// @public (undocumented)
+export interface ConvolverNodeLike extends AudioNodeLike {
+    // (undocumented)
+    buffer: AudioBuffer | null;
+}
+
+// @public
 export class DecodeFailure extends DecodeFailure_base {}
+
+// @public (undocumented)
+export interface DelayNodeLike extends AudioNodeLike {
+    // (undocumented)
+    readonly delayTime: AudioParamLike;
+}
+
+// @public (undocumented)
+export interface DynamicsCompressorNodeLike extends AudioNodeLike {
+    // (undocumented)
+    readonly attack: AudioParamLike;
+    // (undocumented)
+    readonly knee: AudioParamLike;
+    // (undocumented)
+    readonly ratio: AudioParamLike;
+    // (undocumented)
+    readonly release: AudioParamLike;
+    // (undocumented)
+    readonly threshold: AudioParamLike;
+}
+
+// @public
+export class Echo extends Echo_base {}
 
 // @public
 export class Ended extends Ended_base {}
+
+// @public
+export class Filter extends Filter_base {}
 
 // @public (undocumented)
 export interface GainNodeLike extends AudioNodeLike {
@@ -150,6 +214,7 @@ export interface Group {
     readonly play: (sound: Sound, options?: PlayOptions) => Effect.Effect<Voice, never, Scope.Scope>;
     // (undocumented)
     readonly playSprite: (sheet: SpriteSheet, name: string, options?: PlayOptions) => Effect.Effect<Voice, UnknownSprite, Scope.Scope>;
+    readonly setEffects: (effects: ReadonlyArray<AudioEffect>) => Effect.Effect<void>;
     readonly setVolume: (volume: number) => Effect.Effect<void>;
     readonly stopAll: Effect.Effect<void>;
     readonly stream: (url: string, options?: PlayOptions) => Effect.Effect<Voice, LoadError | PlaybackBlocked, Scope.Scope>;
@@ -248,6 +313,9 @@ export class RateChanged extends RateChanged_base {}
 
 // @public
 export class Resumed extends Resumed_base {}
+
+// @public
+export class Reverb extends Reverb_base {}
 
 // @public
 export class Seeked extends Seeked_base {}
