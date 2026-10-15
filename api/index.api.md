@@ -22,6 +22,7 @@ export const AudioBrowserLive: Layer.Layer<Audio_2>;
 
 // @public (undocumented)
 export interface AudioContextLike {
+    addEventListener?(type: "statechange", listener: () => void): void;
     // (undocumented)
     close(): Promise<void>;
     // (undocumented)
@@ -42,6 +43,8 @@ export interface AudioContextLike {
     readonly destination: AudioNodeLike;
     // (undocumented)
     readonly listener: AudioListenerLike;
+    // (undocumented)
+    removeEventListener?(type: "statechange", listener: () => void): void;
     // (undocumented)
     resume(): Promise<void>;
     // (undocumented)

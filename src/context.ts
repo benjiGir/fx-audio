@@ -104,6 +104,9 @@ export interface AudioContextLike {
   decodeAudioData(data: ArrayBuffer): Promise<AudioBuffer>
   resume(): Promise<void>
   close(): Promise<void>
+  /** Present on a real `AudioContext`, which fires `statechange` when it is suspended, interrupted or resumed. */
+  addEventListener?(type: "statechange", listener: () => void): void
+  removeEventListener?(type: "statechange", listener: () => void): void
 }
 
 /** The audio context as an Effect service, provided by a Layer per platform. */
@@ -128,28 +131,52 @@ const gestures = ["pointerdown", "keydown", "touchend"] as const
 const capture = { capture: true }
 
 /**
- * Browsers keep a new `AudioContext` suspended until the page has seen a user gesture.
- * Resume it on the first gesture that works, then stop listening. A gesture the browser
- * refuses (resume rejects, or the context stays suspended) leaves the listeners in place
- * for the next one.
+ * Browsers keep a new `AudioContext` suspended until the page has seen a user gesture, and a phone
+ * suspends or interrupts a running one (a call, the lock screen, a hidden tab). Resume it on the
+ * first gesture that works, then stop listening; leave the gesture listeners in place when the
+ * browser refuses (resume rejects, or the context stays suspended) and put them back each time the
+ * context stops running. A tab that becomes visible again tries to resume at once, since a page that
+ * already had a gesture is often allowed to.
  */
-const resumeOnGesture = (ctx: AudioContextLike) =>
+const keepRunning = (ctx: AudioContextLike) =>
   Effect.acquireRelease(
     Effect.sync(() => {
-      if (ctx.state !== "suspended" || typeof document === "undefined") return undefined
-      const stop = () => {
-        for (const gesture of gestures) document.removeEventListener(gesture, onGesture, capture)
+      if (typeof document === "undefined") return undefined
+      let armed = false
+      const disarm = () => {
+        armed = false
+        for (const gesture of gestures) document.removeEventListener(gesture, tryResume, capture)
       }
-      const onGesture = () => {
+      const tryResume = () => {
         ctx.resume().then(
           () => {
-            if (ctx.state === "running") stop()
+            if (ctx.state === "running") disarm()
           },
           () => undefined
         )
       }
-      for (const gesture of gestures) document.addEventListener(gesture, onGesture, capture)
-      return stop
+      const arm = () => {
+        if (armed) return
+        armed = true
+        for (const gesture of gestures) document.addEventListener(gesture, tryResume, capture)
+      }
+      const onStateChange = () => {
+        if (ctx.state === "running") disarm()
+        else arm()
+      }
+      const onVisibilityChange = () => {
+        if (document.visibilityState !== "visible" || ctx.state === "running") return
+        tryResume()
+        arm()
+      }
+      if (ctx.state !== "running") arm()
+      ctx.addEventListener?.("statechange", onStateChange)
+      document.addEventListener("visibilitychange", onVisibilityChange)
+      return () => {
+        disarm()
+        ctx.removeEventListener?.("statechange", onStateChange)
+        document.removeEventListener("visibilitychange", onVisibilityChange)
+      }
     }),
     (stop) => Effect.sync(() => stop?.())
   )
@@ -157,7 +184,9 @@ const resumeOnGesture = (ctx: AudioContextLike) =>
 /**
  * Browser layer: one `AudioContext` per layer build, closed with its scope. A context
  * the browser starts suspended is resumed on the first user gesture, so sounds played
- * before it are heard from that moment on.
+ * before it are heard from that moment on. A context that a phone call, the lock screen or
+ * a hidden tab suspends or interrupts is resumed the same way, when the tab is visible again
+ * or on the next gesture.
  */
 export const BrowserAudioContextLive: Layer.Layer<AudioContextService> = Layer.effect(
   AudioContextService,
@@ -166,7 +195,7 @@ export const BrowserAudioContextLive: Layer.Layer<AudioContextService> = Layer.e
       Effect.sync(() => new AudioContext() as unknown as AudioContextLike),
       (ctx) => Effect.promise(() => ctx.close())
     )
-    yield* resumeOnGesture(ctx)
+    yield* keepRunning(ctx)
     return AudioContextService.of({ ctx, createMediaElement: () => new Audio() })
   })
 )
