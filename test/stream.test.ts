@@ -346,3 +346,73 @@ describe("streaming failures", () => {
     }).pipe(Effect.scoped, Effect.provide(layer))
   })
 })
+
+describe("reusing stream elements", () => {
+  /** Start a stream on whichever element is loading, and return the playing voice. */
+  const streamNow = (audio: Context.Service.Shape<typeof Audio>, ctx: FakeContext, options = {}) =>
+    Effect.gen(function* () {
+      const fiber = yield* Effect.forkChild(audio.stream(url, options))
+      yield* Effect.yieldNow
+      for (const element of ctx.elements) element.emit("canplay")
+      return yield* Fiber.join(fiber)
+    })
+
+  it.effect("plays the next stream on the element the last one released", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* streamNow(audio, ctx, { loop: true, rate: 1.5 }).pipe(Effect.scoped)
+      yield* streamNow(audio, ctx).pipe(Effect.scoped)
+      assert.strictEqual(ctx.elements.length, 1)
+      // An element is routed into the graph once for good.
+      assert.strictEqual(ctx.mediaSources.length, 1)
+      const element = elementAt(ctx)
+      assert.strictEqual(element.plays, 2)
+      assert.strictEqual(element.crossOrigin, "anonymous")
+      assert.isFalse(element.loop)
+      assert.strictEqual(element.playbackRate, 1)
+      // Each voice gets its own chain, and the source lets go of it when the voice is released.
+      assert.strictEqual(ctx.mediaSources[0]?.connections.length, 2)
+      assert.strictEqual(ctx.mediaSources[0]?.disconnects, 2)
+    }).pipe(Effect.provide(layer))
+  })
+
+  it.effect("reuses one element at a time: two streams that overlap need two", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      yield* streamNow(audio, ctx)
+      yield* streamNow(audio, ctx)
+      assert.strictEqual(ctx.elements.length, 2)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("does not reuse an element that failed", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const fiber = yield* Effect.forkChild(audio.stream(url))
+      yield* Effect.yieldNow
+      elementAt(ctx).error = { code: 2 }
+      elementAt(ctx).emit("error")
+      yield* Fiber.await(fiber)
+      yield* streamNow(audio, ctx).pipe(Effect.scoped)
+      assert.strictEqual(ctx.elements.length, 2)
+    }).pipe(Effect.scoped, Effect.provide(layer))
+  })
+
+  it.effect("keeps at most four idle elements", () => {
+    const { ctx, layer } = setup()
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const round = Effect.gen(function* () {
+        for (let i = 0; i < 5; i++) yield* streamNow(audio, ctx)
+      }).pipe(Effect.scoped)
+      yield* round
+      assert.strictEqual(ctx.elements.length, 5)
+      yield* round
+      // Four came from the idle ones, the fifth is new.
+      assert.strictEqual(ctx.elements.length, 6)
+    }).pipe(Effect.provide(layer))
+  })
+})

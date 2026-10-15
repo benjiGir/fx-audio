@@ -16,3 +16,14 @@ It fails with:
 Cross-origin files need CORS headers: the element is created with `crossOrigin = "anonymous"`, since the browser silences a
 cross-origin element routed into the audio graph. A streamed voice cannot start before the user's first gesture, unlike `play`,
 which waits on the suspended context.
+
+## Many streams, one after the other
+
+A voice lets go of its media element as soon as it ends, whether it ran out, was stopped or failed, not only when the scope closes.
+The element then waits for the next stream (up to four are kept), so a track that follows another reuses it:
+
+- no new media element per stream, which matters on pages that play many tracks, and on browsers that cap how many exist;
+- on iOS Safari an element that has played after a gesture may play again later, so the next track can start from a timer or from the
+  end of the previous one, where a brand new element would be refused with `PlaybackBlocked`.
+
+A failed element is dropped rather than kept. Nothing to configure.

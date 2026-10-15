@@ -66,6 +66,41 @@ describe("streaming through a real media element", () => {
       URL.revokeObjectURL(url)
     }).pipe(Effect.scoped, Effect.provide(realAudio))
   )
+
+  it.live("plays a second stream on the element of the first, routed into the graph once", () =>
+    Effect.gen(function* () {
+      yield* Effect.promise(() => userEvent.click(document.body))
+      const audio = yield* Audio
+      const { ctx } = yield* AudioContextService
+      const made: Array<unknown> = []
+      let routed = 0
+      const createSource = ctx.createMediaElementSource.bind(ctx)
+      ctx.createMediaElementSource = (element) => {
+        routed++
+        return createSource(element)
+      }
+      const url = wavUrl()
+      // The layer builds its elements with `new Audio()`, so count them through the class.
+      const NativeAudio = globalThis.Audio
+      globalThis.Audio = class extends NativeAudio {
+        constructor() {
+          super()
+          made.push(this)
+        }
+      }
+      try {
+        const first = yield* audio.stream(url)
+        yield* first.stop
+        const second = yield* audio.stream(url)
+        yield* second.stop
+      } finally {
+        globalThis.Audio = NativeAudio
+        URL.revokeObjectURL(url)
+      }
+      assert.strictEqual(made.length, 1)
+      assert.strictEqual(routed, 1)
+    }).pipe(Effect.scoped, Effect.provide(realAudio))
+  )
 })
 
 describe("the browser's native AudioContext", () => {
