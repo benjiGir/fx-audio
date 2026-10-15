@@ -5,6 +5,7 @@
 
 import * as Layer from "effect/Layer"
 import type {
+  AnalyserNodeLike,
   AudioContextLike,
   AudioListenerLike,
   AudioNodeLike,
@@ -70,6 +71,14 @@ export interface FakeSpatialPanner extends PannerNodeLike {
   readonly connections: ReadonlyArray<AudioNodeLike>
 }
 
+/** An analyser that reads whatever a test puts in `frequencyData` and `timeData`. */
+export interface FakeAnalyser extends AnalyserNodeLike {
+  /** What `getByteFrequencyData` returns, from the start. Empty by default, which reads as silence. */
+  frequencyData: Uint8Array
+  /** What `getFloatTimeDomainData` returns, from the start. Empty by default, which reads as silence. */
+  timeData: Float32Array
+}
+
 /** A media element that records what it is asked to do and fires its events on demand. */
 export interface FakeMediaElement extends MediaElementLike {
   readonly plays: number
@@ -119,6 +128,7 @@ export interface FakeContext extends AudioContextLike {
   readonly sources: ReadonlyArray<FakeSource>
   readonly gains: ReadonlyArray<FakeGain>
   readonly panners: ReadonlyArray<FakePanner>
+  readonly analysers: ReadonlyArray<FakeAnalyser>
   /** The media elements built by `createMediaElement`, in creation order. */
   readonly elements: ReadonlyArray<FakeMediaElement>
   /** The nodes `createMediaElementSource` returned, in creation order. */
@@ -200,6 +210,7 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
   const sources: Array<FakeSource> = []
   const gains: Array<FakeGain> = []
   const panners: Array<FakePanner> = []
+  const analysers: Array<FakeAnalyser> = []
   const spatialPanners: Array<FakeSpatialPanner> = []
   let resumes = 0
   const elements: Array<FakeMediaElement> = []
@@ -210,6 +221,7 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
     sources,
     gains,
     panners,
+    analysers,
     spatialPanners,
     elements,
     mediaSources,
@@ -335,6 +347,27 @@ export const makeFakeContext = (options: FakeContextOptions = {}): FakeContext =
       }
       gains.push(gain)
       return gain
+    },
+    createAnalyser() {
+      const analyser: FakeAnalyser = {
+        fftSize: 2048,
+        get frequencyBinCount() {
+          return analyser.fftSize / 2
+        },
+        frequencyData: new Uint8Array(0),
+        timeData: new Float32Array(0),
+        // Nothing listens to an analyser's output, so there is nothing to record.
+        connect: destination.connect,
+        disconnect: destination.disconnect,
+        getByteFrequencyData(array) {
+          array.set(analyser.frequencyData.subarray(0, array.length))
+        },
+        getFloatTimeDomainData(array) {
+          array.set(analyser.timeData.subarray(0, array.length))
+        }
+      }
+      analysers.push(analyser)
+      return analyser
     },
     createStereoPanner() {
       const connections: Array<AudioNodeLike> = []

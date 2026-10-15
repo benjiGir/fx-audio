@@ -13,10 +13,22 @@ import * as Scope from "effect/Scope"
 import * as Stream from "effect/Stream"
 import type { AudioContextService } from "./context.ts"
 import { BrowserAudioContextLive } from "./context.ts"
-import type { Group, Listener, Voice } from "./core.ts"
+import type { Analyser, Group, Listener, Voice } from "./core.ts"
 import { Audio, AudioLive } from "./core.ts"
 import type { Sound, SpriteSheet, Vector3, VoiceEvent } from "./model.ts"
 import { PlayOptions } from "./model.ts"
+
+/** The level and spectrum of a voice or a group, see `Analyser`. Each method reads the signal as it is now. */
+export interface PromiseAnalyser {
+  /** The RMS of the last 2048 samples, from 0 (silence) to 1 (full scale). */
+  level(): number
+  /** The highest absolute sample of the same window, from 0 to 1. */
+  peak(): number
+  /** 1024 values from 0 to 255, from 0 Hz up to half the sample rate. */
+  spectrum(): Uint8Array
+  /** The last 2048 samples, each from -1 to 1. */
+  waveform(): Float32Array
+}
 
 /** Promise facade for users who do not use Effect. Same engine, no Effect types. */
 export interface PromiseVoice {
@@ -32,6 +44,8 @@ export interface PromiseVoice {
     listener: (event: Extract<VoiceEvent, { readonly _tag: Type }>) => void
   ): () => void
   stop(): void
+  /** Reads this voice's level and spectrum. The same object on every call. */
+  analyser(): PromiseAnalyser
   /** Hold the voice where it is. */
   pause(): void
   /** Carry on after `pause`. Rejects with `PlaybackBlocked` only for a streamed voice the browser refuses to restart. */
@@ -80,6 +94,8 @@ export interface PromiseGroup {
   crossfade(out: PromiseVoice, sound: Sound, milliseconds: number, options?: unknown): PromiseVoice
   /** Stop every voice playing through this group (on the master, every voice): Howler's `Howler.stop()`. */
   stopAll(): void
+  /** Reads the level and spectrum of everything this group plays. The same object on every call. */
+  analyser(): PromiseAnalyser
   /** Throws a `SchemaError` on a negative or non-finite volume. */
   setVolume(volume: number): void
   /** Linear fade, `milliseconds` long. Throws a `SchemaError` on a negative or non-finite volume. */
@@ -161,6 +177,22 @@ const facade = (
   scope: Scope.Closeable,
   audio: Audio["Service"]
 ): PromiseAudio => {
+  const wrapAnalyser = (analyser: Analyser): PromiseAnalyser => ({
+    level: () => runtime.runSync(analyser.level),
+    peak: () => runtime.runSync(analyser.peak),
+    spectrum: () => runtime.runSync(analyser.spectrum),
+    waveform: () => runtime.runSync(analyser.waveform)
+  })
+  const analysers = new WeakMap<Analyser, PromiseAnalyser>()
+  const analyserOf = (effect: Effect.Effect<Analyser>) => {
+    const analyser = runtime.runSync(effect)
+    let wrapped = analysers.get(analyser)
+    if (wrapped === undefined) {
+      wrapped = wrapAnalyser(analyser)
+      analysers.set(analyser, wrapped)
+    }
+    return wrapped
+  }
   // The facade hands out `PromiseVoice`s; `crossfade` needs the voice behind one.
   const voices = new WeakMap<PromiseVoice, Voice>()
   const wrap = (voice: Voice): PromiseVoice => {
@@ -188,6 +220,7 @@ const facade = (
       return () => fiber.interruptUnsafe()
     },
     stop: () => runtime.runSync(voice.stop),
+    analyser: () => analyserOf(voice.analyser),
     pause: () => runtime.runSync(voice.pause),
     resume: () => runtime.runPromise(voice.resume),
     seek: (milliseconds) => runtime.runSync(voice.seek(milliseconds)),
@@ -224,6 +257,7 @@ const facade = (
       )
     },
     stopAll: () => runtime.runSync(group.stopAll),
+    analyser: () => analyserOf(group.analyser),
     setVolume: (volume) => runtime.runSync(group.setVolume(volume)),
     fadeTo: (volume, milliseconds) =>
       runtime.runSync(group.fadeTo(volume, `${milliseconds} millis`)),

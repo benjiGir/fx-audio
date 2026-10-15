@@ -8,6 +8,12 @@ import * as Context from 'effect/Context';
 import * as Layer from 'effect/Layer';
 
 // @public
+export interface FakeAnalyser extends AnalyserNodeLike {
+    frequencyData: Uint8Array;
+    timeData: Float32Array;
+}
+
+// @public
 export const FakeAudioContextLive: (ctx: AudioContextLike, options?: {
     readonly createMediaElement?: () => MediaElementLike;
     readonly readFile?: (location: string, signal: AbortSignal) => Promise<ArrayBuffer>;
@@ -15,6 +21,8 @@ export const FakeAudioContextLive: (ctx: AudioContextLike, options?: {
 
 // @public
 export interface FakeContext extends AudioContextLike {
+    // (undocumented)
+    readonly analysers: ReadonlyArray<FakeAnalyser>;
     createMediaElement(): FakeMediaElement;
     // (undocumented)
     currentTime: number;

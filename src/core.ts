@@ -50,6 +50,21 @@ import {
   VolumeChanged
 } from "./model.ts"
 
+/**
+ * What a voice or a group sounds like right now, read from the signal as it passes. Reading costs
+ * nothing until you do it: poll it from `requestAnimationFrame` for a level meter or a visualiser.
+ */
+export interface Analyser {
+  /** How loud it is: the RMS of the last `fftSize` (2048) samples, from 0 (silence) to 1 (full scale). */
+  readonly level: Effect.Effect<number>
+  /** The highest absolute sample of the same window, from 0 to 1. */
+  readonly peak: Effect.Effect<number>
+  /** The sound by frequency: 1024 values from 0 to 255, from 0 Hz up to half the sample rate. */
+  readonly spectrum: Effect.Effect<Uint8Array>
+  /** The signal itself over the same window as `level`, each sample from -1 to 1. */
+  readonly waveform: Effect.Effect<Float32Array>
+}
+
 export interface Voice {
   /** Completes when playback ends naturally, the voice is stopped or its scope closes. */
   readonly ended: Effect.Effect<void>
@@ -84,6 +99,11 @@ export interface Voice {
   readonly setRate: (rate: number) => Effect.Effect<void>
   /** Turn looping on or off while the voice plays. */
   readonly setLoop: (loop: boolean) => Effect.Effect<void>
+  /**
+   * Reads this voice's level and spectrum, as it leaves the voice, after volume, pan and position. Built on
+   * the first call and the same object afterwards; it is released with the voice.
+   */
+  readonly analyser: Effect.Effect<Analyser>
   /** Linear fade of this voice's gain, scheduled on the audio thread. */
   readonly fadeTo: (volume: number, over: Duration.Input) => Effect.Effect<void>
   /**
@@ -154,6 +174,11 @@ export interface Group {
    * started afterwards plays normally, and a stream still waiting to start is not reached.
    */
   readonly stopAll: Effect.Effect<void>
+  /**
+   * Reads the level and spectrum of everything this group plays (of everything, for the master),
+   * after the group's own volume. Built on the first call and the same object afterwards.
+   */
+  readonly analyser: Effect.Effect<Analyser>
   /** Set the volume at once, cancelling a fade in progress. Dies on a negative or non-finite volume. */
   readonly setVolume: (volume: number) => Effect.Effect<void>
   /** Linear fade to `volume`. While muted, only the volume restored by `unmute` changes. */
@@ -327,6 +352,8 @@ export class Audio extends Context.Service<
     ): Effect.Effect<Voice, never, Scope.Scope>
     /** Stop every voice playing, in every group: Howler's `Howler.stop()`. See `Group.stopAll`. */
     readonly stopAll: Effect.Effect<void>
+    /** Reads the level and spectrum of everything that plays, see `Group.analyser`. */
+    readonly analyser: Effect.Effect<Analyser>
     /** The group every other group and every plain `play` ends up in: Howler's global volume and mute. */
     readonly master: Group
     /**
@@ -440,6 +467,39 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       return panner
     }
 
+    /** An analyser that listens to `tap` without being part of the way to the output. */
+    const makeAnalyser = (tap: AudioNodeLike): Analyser => {
+      const node = ctx.createAnalyser()
+      tap.connect(node)
+      const waveform = Effect.sync(() => {
+        const samples = new Float32Array(node.fftSize)
+        node.getFloatTimeDomainData(samples)
+        return samples
+      })
+      return {
+        level: waveform.pipe(
+          Effect.map((samples) => {
+            let sum = 0
+            for (const sample of samples) sum += sample * sample
+            return Math.sqrt(sum / samples.length)
+          })
+        ),
+        peak: waveform.pipe(
+          Effect.map((samples) => {
+            let peak = 0
+            for (const sample of samples) peak = Math.max(peak, Math.abs(sample))
+            return peak
+          })
+        ),
+        spectrum: Effect.sync(() => {
+          const bins = new Uint8Array(node.frequencyBinCount)
+          node.getByteFrequencyData(bins)
+          return bins
+        }),
+        waveform
+      }
+    }
+
     /**
      * What every voice has after its source: [stereo] -> [spatial] -> gain -> output,
      * and the controls that act on those nodes. The source node comes later, from `setInput`,
@@ -474,42 +534,45 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       if (options.spatial !== undefined) route.spatial = createSpatial(options.spatial)
       link()
       gain.connect(output)
-      const controls: Pick<Voice, "fadeTo" | "setVolume" | "setPan" | "setPosition"> = {
-        fadeTo: (volume, over) =>
-          Effect.sync(() => {
-            const now = ctx.currentTime
-            gain.gain.setValueAtTime(gain.gain.value, now)
-            gain.gain.linearRampToValueAtTime(volume, now + Duration.toSeconds(over))
-          }),
-        setVolume: (requested) =>
-          Effect.sync(() => {
-            const volume = decodeVolume(requested)
-            const now = ctx.currentTime
-            gain.gain.cancelScheduledValues(now)
-            gain.gain.setValueAtTime(volume, now)
-          }),
-        setPan: (requested) =>
-          Effect.sync(() => {
-            const pan = decodePan(requested)
-            if (route.stereo === undefined) {
-              route.stereo = createStereo(pan)
-              rewire()
-            } else {
-              route.stereo.pan.value = pan
-            }
-          }),
-        setPosition: (requested) =>
-          Effect.sync(() => {
-            const position = decodeVector(requested)
-            if (route.spatial === undefined) {
-              route.spatial = createSpatial(new SpatialOptions({ position }))
-              rewire()
-            } else {
-              const { positionX, positionY, positionZ } = route.spatial
-              setVector([positionX, positionY, positionZ], position)
-            }
-          })
-      }
+      let analyser: Analyser | undefined
+      const controls: Pick<Voice, "analyser" | "fadeTo" | "setVolume" | "setPan" | "setPosition"> =
+        {
+          analyser: Effect.sync(() => (analyser ??= makeAnalyser(gain))),
+          fadeTo: (volume, over) =>
+            Effect.sync(() => {
+              const now = ctx.currentTime
+              gain.gain.setValueAtTime(gain.gain.value, now)
+              gain.gain.linearRampToValueAtTime(volume, now + Duration.toSeconds(over))
+            }),
+          setVolume: (requested) =>
+            Effect.sync(() => {
+              const volume = decodeVolume(requested)
+              const now = ctx.currentTime
+              gain.gain.cancelScheduledValues(now)
+              gain.gain.setValueAtTime(volume, now)
+            }),
+          setPan: (requested) =>
+            Effect.sync(() => {
+              const pan = decodePan(requested)
+              if (route.stereo === undefined) {
+                route.stereo = createStereo(pan)
+                rewire()
+              } else {
+                route.stereo.pan.value = pan
+              }
+            }),
+          setPosition: (requested) =>
+            Effect.sync(() => {
+              const position = decodeVector(requested)
+              if (route.spatial === undefined) {
+                route.spatial = createSpatial(new SpatialOptions({ position }))
+                rewire()
+              } else {
+                const { positionX, positionY, positionZ } = route.spatial
+                setVector([positionX, positionY, positionZ], position)
+              }
+            })
+        }
       const setInput = (next: AudioNodeLike) => {
         input = next
         feed()
@@ -958,10 +1021,12 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
         for (const stop of Array.from(playing)) stop()
       })
 
+      let analyser: Analyser | undefined
       const play: Group["play"] = (sound, options = {}) =>
         startVoice(sound, options, undefined, node, track)
 
       const group: Group = {
+        analyser: Effect.sync(() => (analyser ??= makeAnalyser(node))),
         play,
         playSprite: spriteOn(node, track),
         stream: (url, options = {}) => startStream(url, options, node, track),
@@ -1053,6 +1118,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       stream: master.stream,
       crossfade: master.crossfade,
       stopAll: master.stopAll,
+      analyser: master.analyser,
       master,
       group,
       listener: listenerService,

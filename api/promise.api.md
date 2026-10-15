@@ -14,6 +14,14 @@ export const createAudio: (platform?: Layer.Layer<AudioContextService>) => Promi
 // @public
 export const createAudioAsync: (platform: Layer.Layer<AudioContextService>) => Promise<PromiseAudio>;
 
+// @public
+export interface PromiseAnalyser {
+    level(): number;
+    peak(): number;
+    spectrum(): Uint8Array;
+    waveform(): Float32Array;
+}
+
 // @public (undocumented)
 export interface PromiseAudio extends PromiseGroup {
     // (undocumented)
@@ -29,6 +37,7 @@ export interface PromiseAudio extends PromiseGroup {
 
 // @public
 export interface PromiseGroup {
+    analyser(): PromiseAnalyser;
     crossfade(out: PromiseVoice, sound: Sound, milliseconds: number, options?: unknown): PromiseVoice;
     fadeTo(volume: number, milliseconds: number): void;
     // (undocumented)
@@ -52,6 +61,7 @@ export interface PromiseListener {
 
 // @public
 export interface PromiseVoice {
+    analyser(): PromiseAnalyser;
     // (undocumented)
     readonly ended: Promise<void>;
     fadeOut(milliseconds: number): Promise<void>;
