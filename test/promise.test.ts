@@ -373,6 +373,39 @@ describe("promise facade on an asynchronous platform layer", () => {
     await audio.dispose()
   })
 
+  it("fadeOut fades to silence and resolves once the voice has stopped", async () => {
+    const { ctx, audio } = setup()
+    const sound = new Sound({ buffer: { duration: 4 } as AudioBuffer, source: "a.wav" })
+    const voice = audio.play(sound)
+    await voice.fadeOut(20)
+    assert.strictEqual(voiceGains(ctx)[0]?.gain.calls.at(-1)?.value, 0)
+    assert.strictEqual(ctx.sources[0]?.stops, 1)
+    await voice.ended
+    await audio.dispose()
+  })
+
+  it("crossfade hands over from one voice to a new one", async () => {
+    const { ctx, audio } = setup()
+    const sound = new Sound({ buffer: { duration: 4 } as AudioBuffer, source: "a.wav" })
+    const music = audio.group("music")
+    const old = music.play(sound)
+    const next = music.crossfade(old, sound, 20, { volume: 0.6 })
+    assert.strictEqual(gainAt(ctx, 3).gain.calls.at(-1)?.value, 0.6)
+    await old.ended
+    assert.strictEqual(ctx.sources[0]?.stops, 1)
+    assert.strictEqual(ctx.sources[1]?.stops, 0)
+    assert.isFalse(next.paused())
+    // Without a voice of this audio there is nothing to fade out.
+    const stranger = createAudio(FakeAudioContextLive(makeFakeContext())).play(sound)
+    assert.throws(() => audio.crossfade(stranger, sound, 20), TypeError)
+    assert.throws(() => audio.crossfade(next, sound, 20, { volume: -1 }))
+    // The options are optional.
+    const third = audio.crossfade(next, sound, 20)
+    await next.ended
+    assert.isFalse(third.paused())
+    await audio.dispose()
+  })
+
   it("on listens to one kind of event until the returned function is called", async () => {
     const { audio } = setup()
     const sound = new Sound({ buffer: { duration: 4 } as AudioBuffer, source: "a.wav" })

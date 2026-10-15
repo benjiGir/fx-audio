@@ -87,6 +87,11 @@ export interface Voice {
   /** Linear fade of this voice's gain, scheduled on the audio thread. */
   readonly fadeTo: (volume: number, over: Duration.Input) => Effect.Effect<void>
   /**
+   * Fade the voice to silence, then stop it. Completes once the voice has stopped, which is at the
+   * end of the fade, or sooner if the voice ends by itself or is stopped meanwhile.
+   */
+  readonly fadeOut: (over: Duration.Input) => Effect.Effect<void>
+  /**
    * Move this voice between the left (-1) and right (1) speaker. Dies on a value
    * outside that range. A voice started without `pan` gets its panner on the first call.
    */
@@ -132,6 +137,18 @@ export interface Group {
     url: string,
     options?: PlayOptions
   ) => Effect.Effect<Voice, LoadError | PlaybackBlocked, Scope.Scope>
+  /**
+   * Hand over from `out` to `sound`: the new voice starts silent and fades up to `options.volume`
+   * (1 by default) while `out` fades down and stops, both over `over`. Resolves with the new voice
+   * as soon as it has started; the old one goes on fading in the background, and is stopped at once if
+   * the scope closes before the fade is over.
+   */
+  readonly crossfade: (
+    out: Voice,
+    sound: Sound,
+    over: Duration.Input,
+    options?: PlayOptions
+  ) => Effect.Effect<Voice, never, Scope.Scope>
   /**
    * Stop every voice playing through this group, Howler's `Howler.stop()` for the master. A voice
    * started afterwards plays normally, and a stream still waiting to start is not reached.
@@ -301,6 +318,13 @@ export class Audio extends Context.Service<
       url: string,
       options?: PlayOptions
     ): Effect.Effect<Voice, LoadError | PlaybackBlocked, Scope.Scope>
+    /** Hand over from a playing voice to a new sound on the master group, see `Group.crossfade`. */
+    crossfade(
+      out: Voice,
+      sound: Sound,
+      over: Duration.Input,
+      options?: PlayOptions
+    ): Effect.Effect<Voice, never, Scope.Scope>
     /** Stop every voice playing, in every group: Howler's `Howler.stop()`. See `Group.stopAll`. */
     readonly stopAll: Effect.Effect<void>
     /** The group every other group and every plain `play` ends up in: Howler's global volume and mute. */
@@ -681,6 +705,17 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
             bus.emit(new LoopChanged({ loop }))
           }),
         ...chain.controls,
+        fadeOut: (over) =>
+          Effect.suspend(() =>
+            alive()
+              ? chain.controls
+                  .fadeTo(0, over)
+                  .pipe(
+                    Effect.andThen(Effect.raceFirst(Effect.sleep(over), Deferred.await(ended))),
+                    Effect.andThen(whileAlive(stop))
+                  )
+              : Effect.void
+          ),
         setVolume: (volume) =>
           chain.controls
             .setVolume(volume)
@@ -923,10 +958,21 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
         for (const stop of Array.from(playing)) stop()
       })
 
+      const play: Group["play"] = (sound, options = {}) =>
+        startVoice(sound, options, undefined, node, track)
+
       const group: Group = {
-        play: (sound, options = {}) => startVoice(sound, options, undefined, node, track),
+        play,
         playSprite: spriteOn(node, track),
         stream: (url, options = {}) => startStream(url, options, node, track),
+        crossfade: Effect.fnUntraced(function* (out, sound, over, options = {}) {
+          const next = yield* play(sound, { ...options, volume: 0 })
+          yield* next.fadeTo(options.volume ?? 1, over)
+          // A scope that closes mid-fade ends the hand-over: the old voice stops where it is.
+          const fading = out.fadeOut(over).pipe(Effect.onInterrupt(() => out.stop))
+          yield* Effect.forkIn(fading, yield* Scope.Scope)
+          return next
+        }),
         stopAll,
         setVolume,
         fadeTo,
@@ -1005,6 +1051,7 @@ export const AudioLive: Layer.Layer<Audio, never, AudioContextService> = Layer.e
       play: master.play,
       playSprite: master.playSprite,
       stream: master.stream,
+      crossfade: master.crossfade,
       stopAll: master.stopAll,
       master,
       group,

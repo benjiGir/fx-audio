@@ -47,6 +47,8 @@ export interface PromiseVoice {
   setRate(rate: number): void
   setLoop(loop: boolean): void
   fadeTo(volume: number, milliseconds: number): void
+  /** Fade to silence over `milliseconds`, then stop. Resolves once the voice has stopped. */
+  fadeOut(milliseconds: number): Promise<void>
   /** Throws a `SchemaError` outside -1 (left) to 1 (right). */
   setPan(pan: number): void
   /** Move the voice in 3D space. Throws a `SchemaError` on a non-finite coordinate. */
@@ -70,6 +72,12 @@ export interface PromiseGroup {
    * before a user gesture, and throws a `SchemaError` on invalid options.
    */
   stream(url: string, options?: unknown): Promise<PromiseVoice>
+  /**
+   * Hand over from `out` to `sound`: the new voice starts silent and fades up to `options.volume` (1 by
+   * default) while `out` fades down and stops, both over `milliseconds`. Returns the new voice.
+   * Throws a `SchemaError` on invalid options.
+   */
+  crossfade(out: PromiseVoice, sound: Sound, milliseconds: number, options?: unknown): PromiseVoice
   /** Stop every voice playing through this group (on the master, every voice): Howler's `Howler.stop()`. */
   stopAll(): void
   /** Throws a `SchemaError` on a negative or non-finite volume. */
@@ -153,7 +161,14 @@ const facade = (
   scope: Scope.Closeable,
   audio: Audio["Service"]
 ): PromiseAudio => {
-  const wrap = (voice: Voice): PromiseVoice => ({
+  // The facade hands out `PromiseVoice`s; `crossfade` needs the voice behind one.
+  const voices = new WeakMap<PromiseVoice, Voice>()
+  const wrap = (voice: Voice): PromiseVoice => {
+    const wrapped = wrapVoice(voice)
+    voices.set(wrapped, voice)
+    return wrapped
+  }
+  const wrapVoice = (voice: Voice): PromiseVoice => ({
     ended: runtime.runPromise(voice.ended),
     on: (type, listener) => {
       const fiber = runtime.runFork(
@@ -183,6 +198,7 @@ const facade = (
     setLoop: (loop) => runtime.runSync(voice.setLoop(loop)),
     fadeTo: (volume, milliseconds) =>
       runtime.runSync(voice.fadeTo(volume, `${milliseconds} millis`)),
+    fadeOut: (milliseconds) => runtime.runPromise(voice.fadeOut(`${milliseconds} millis`)),
     setPan: (pan) => runtime.runSync(voice.setPan(pan)),
     setPosition: (position) => runtime.runSync(voice.setPosition(position))
   })
@@ -197,6 +213,15 @@ const facade = (
     stream: async (url, options) => {
       const decoded = decodeOptions(options ?? {})
       return wrap(await runtime.runPromise(withScope(group.stream(url, decoded))))
+    },
+    crossfade: (out, sound, milliseconds, options) => {
+      const from = voices.get(out)
+      if (from === undefined) throw new TypeError("crossfade needs a voice of this audio")
+      return wrap(
+        inScope(
+          group.crossfade(from, sound, `${milliseconds} millis`, decodeOptions(options ?? {}))
+        )
+      )
     },
     stopAll: () => runtime.runSync(group.stopAll),
     setVolume: (volume) => runtime.runSync(group.setVolume(volume)),

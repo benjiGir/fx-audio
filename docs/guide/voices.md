@@ -40,9 +40,23 @@ with `PlaybackBlocked` if the browser refuses to restart it; the voice then stay
 | `setRate(rate)` | Changes the speed: 1 is normal, 2 twice as fast. Dies on a rate that is not above zero. |
 | `setLoop(loop)` | Turns looping on or off. |
 | `fadeTo(volume, over)` | Fades the volume, see [Groups and master](./groups). |
+| `fadeOut(over)` | Fades to silence, then stops the voice. Completes once it has stopped. |
 
 `setRate` changes the pitch with the speed, as `rate` does in Howler. Turning `loop` on or off starts a new source at the
 current position, like a seek.
+
+## Crossfade
+
+`crossfade(out, sound, over, options)` hands over from a playing voice to a new sound, on the master or on a group: the new voice
+starts silent and fades up to `options.volume` (1 by default) while `out` fades down and stops, both over the same time. It
+returns the new voice as soon as it has started.
+
+<<< @/examples/voices.ts#crossfade-effect{ts}
+
+<<< @/examples/voices.ts#crossfade-promise{ts}
+
+The old voice may be a stream, the new one is a decoded sound. If the scope closes before the fade is over, the old voice is
+stopped where it is. Chain it from the previous result for a playlist: each call returns the voice to hand over from next time.
 
 ## Events
 

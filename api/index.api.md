@@ -120,6 +120,7 @@ export interface GainNodeLike extends AudioNodeLike {
 
 // @public
 export interface Group {
+    readonly crossfade: (out: Voice, sound: Sound, over: Duration.Input, options?: PlayOptions) => Effect.Effect<Voice, never, Scope.Scope>;
     readonly fadeTo: (volume: number, over: Duration.Input) => Effect.Effect<void>;
     readonly mute: Effect.Effect<void>;
     // (undocumented)
@@ -285,6 +286,7 @@ export class Vector3 extends Vector3_base {}
 export interface Voice {
     readonly ended: Effect.Effect<void>;
     readonly events: Stream.Stream<VoiceEvent>;
+    readonly fadeOut: (over: Duration.Input) => Effect.Effect<void>;
     readonly fadeTo: (volume: number, over: Duration.Input) => Effect.Effect<void>;
     readonly pause: Effect.Effect<void>;
     readonly paused: Effect.Effect<boolean>;
