@@ -15,6 +15,7 @@ pnpm add fx-audio effect
 | `fx-audio/node` | `NodeAudioContextLive`, on top of `node-web-audio-api`: loads sounds from disk |
 | `fx-audio/promise` | Promise facade for code that does not use Effect (`createAudio`, and `createAudioAsync` for Node) |
 | `fx-audio/testing` | `makeFakeContext` and `FakeAudioContextLive`, an audio context double for tests |
+| `fx-audio/react` | `AudioProvider`, `useAudio`, `useGroup` and `useSound`, for React 18 or later (optional peer dependency) |
 
 Import Effect modules by subpath (`effect/Effect`), never from the `effect` barrel, to keep bundles small.
 

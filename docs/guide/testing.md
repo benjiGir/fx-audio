@@ -39,6 +39,11 @@ A fake source never ends on its own. Call `source.end()` to simulate the engine 
 - `elements` and `mediaSources` record the media elements built for streaming; give `ctx.createMediaElement` to
   `FakeAudioContextLive` (second argument) so `stream` can build them, and set `ctx.playResult` to make `play` reject.
 - `listener` is a fake listener (or `makeLegacyListener()` to mimic Firefox's older methods).
-- `currentTime` is a plain number you can set to schedule against.
+- `currentTime` is a plain number you can set to schedule against, and `state` is the context state (`"running"` by default).
+- `source.startCalls` lists the `when`, `offset` and `duration` of every `start`, which is how `delay`, `startAt` and sprites are checked.
+- `analysers`, `filters`, `delays`, `convolvers` and `compressors` record the nodes built for level meters and group effects. Put
+  data in an analyser's `frequencyData` and `timeData` to test what reads them.
+- A fake source's `end()` and a fake element's `emit(type)` stand in for the engine and the browser, so ended voices and streams
+  that fail or finish can be tested without waiting.
 
 The double is what fx-audio's own unit tests use, and the [API reference](/api/) lists all of it.
