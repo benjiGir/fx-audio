@@ -8,6 +8,12 @@ const isAudioBufferLike = (u: unknown): u is AudioBuffer =>
 /** A gain: zero is silence, one is unchanged, above one amplifies. */
 export const Volume = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
 
+/** A playback speed: one is the sound's own speed, two is twice as fast. */
+export const Rate = Schema.Finite.check(Schema.isGreaterThan(0))
+
+/** A point in time inside a voice, in milliseconds from its start. */
+export const Position = Schema.Finite.check(Schema.isGreaterThanOrEqualTo(0))
+
 /** Stereo position: -1 is all left, 0 is centred, 1 is all right. */
 export const Pan = Schema.Finite.check(Schema.isBetween({ minimum: -1, maximum: 1 }))
 
@@ -61,7 +67,7 @@ export class PlayOptions extends Schema.Class<PlayOptions>("fx-audio/PlayOptions
   volume: Schema.optionalKey(Volume),
   pan: Schema.optionalKey(Pan),
   spatial: Schema.optionalKey(SpatialOptions),
-  rate: Schema.optionalKey(Schema.Finite.check(Schema.isGreaterThan(0))),
+  rate: Schema.optionalKey(Rate),
   loop: Schema.optionalKey(Schema.Boolean)
 }) {}
 

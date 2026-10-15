@@ -133,6 +133,58 @@ describe("the audio graph on a real engine (offline render)", () => {
     )
   })
 
+  it.live("seek renders only what is left of the sound", () => {
+    const { layer, render } = makeOfflineContext(0.5)
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const sound = yield* audio.decode(makeWav(0.5), "tone.wav")
+      const voice = yield* audio.play(sound, { volume: 0.5 })
+      yield* voice.seek(400)
+      const rendered = yield* Effect.promise(render)
+      yield* voice.ended
+      const data = rendered.getChannelData(0)
+      const window = (from: number, to: number) => {
+        let max = 0
+        for (let i = Math.round(from * 44100); i < Math.round(to * 44100); i++) {
+          max = Math.max(max, Math.abs(data[i] ?? 0))
+        }
+        return max
+      }
+      assert.isAbove(window(0, 0.08), 0.05)
+      assert.isBelow(window(0.15, 0.5), 0.001)
+    }).pipe(
+      Effect.scoped,
+      Effect.timeout("10 seconds"),
+      Effect.provide(AudioLive.pipe(Layer.provide(layer)))
+    )
+  })
+
+  it.live("a paused voice renders silence and does not end, a resumed one plays", () => {
+    const { layer, render } = makeOfflineContext(0.3)
+    return Effect.gen(function* () {
+      const audio = yield* Audio
+      const sound = yield* audio.decode(makeWav(0.2), "tone.wav")
+      const paused = yield* audio.play(sound, { volume: 0.5 })
+      yield* paused.pause
+      const resumed = yield* audio.play(sound, { volume: 0.5 })
+      yield* resumed.pause
+      yield* resumed.resume
+      const rendered = yield* Effect.promise(render)
+      yield* resumed.ended
+      assert.isTrue(yield* paused.paused)
+      assert.strictEqual(yield* paused.position, 0)
+      const data = rendered.getChannelData(0)
+      let max = 0
+      for (let i = 0; i < Math.round(0.15 * 44100); i++) max = Math.max(max, Math.abs(data[i] ?? 0))
+      // Only the resumed voice is heard: one tone at half volume, not two.
+      assert.closeTo(max, 0.18, 0.03)
+    }).pipe(
+      Effect.scoped,
+      Effect.timeout("10 seconds"),
+      Effect.provide(AudioLive.pipe(Layer.provide(layer)))
+    )
+  })
+
   it.live("fadeTo ramps the gain down to silence", () => {
     const { layer, render } = makeOfflineContext(1)
     return Effect.gen(function* () {

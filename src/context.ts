@@ -80,6 +80,8 @@ export interface MediaElementLike {
   preload: string
   loop: boolean
   playbackRate: number
+  /** Seconds from the start of the media. Setting it seeks. */
+  currentTime: number
   readonly error: { readonly code: number } | null
   play(): Promise<void>
   pause(): void
