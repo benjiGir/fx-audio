@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/public/logo-dark.svg">
+    <img src="docs/public/logo.svg" alt="fx-audio logo: an f followed by an x made of two crossed patch cables" width="140">
+  </picture>
+</p>
+
 # fx-audio
 
 Audio library for the browser and Node, built on [Effect](https://effect.website).
