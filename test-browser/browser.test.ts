@@ -103,6 +103,27 @@ describe("streaming through a real media element", () => {
   )
 })
 
+describe("an analyser on a real-time context", () => {
+  // A real-time context only runs on Chromium CI machines (no sound card elsewhere).
+  it.live("reads the level of a tone that plays", () =>
+    Effect.gen(function* () {
+      if (server.browser !== "chromium") return
+      yield* Effect.promise(() => userEvent.click(document.body))
+      const audio = yield* Audio
+      const sound = yield* audio.decode(makeWav(1), "tone.wav")
+      const voice = yield* audio.play(sound, { loop: true, volume: 0.5 })
+      const analyser = yield* voice.analyser
+      yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 400)))
+      const level = yield* analyser.level
+      assert.isAbove(level, 0.05)
+      assert.isAtMost(level, 0.5)
+      assert.isAbove(yield* analyser.peak, level)
+      const spectrum = yield* analyser.spectrum
+      assert.isAbove(Math.max(...spectrum), 50)
+    }).pipe(Effect.scoped, Effect.timeout("10 seconds"), Effect.provide(realAudio))
+  )
+})
+
 describe("the browser's native AudioContext", () => {
   it.live("decodes a WAV with the native decoder", () =>
     Effect.gen(function* () {
@@ -217,6 +238,27 @@ describe("the audio graph on a real engine (offline render)", () => {
       Effect.provide(AudioLive.pipe(Layer.provide(layer)))
     )
   })
+
+  it.live(
+    "an analyser on a real engine has the sizes it promises, and reads a playing voice",
+    () => {
+      const { layer } = makeOfflineContext(0.5)
+      return Effect.gen(function* () {
+        const audio = yield* Audio
+        const sound = yield* audio.decode(makeWav(0.5), "tone.wav")
+        const voice = yield* audio.play(sound, { loop: true })
+        const analyser = yield* voice.analyser
+        assert.strictEqual((yield* analyser.spectrum).length, 1024)
+        assert.strictEqual((yield* analyser.waveform).length, 2048)
+        assert.strictEqual(yield* analyser.level, 0)
+        assert.strictEqual(yield* (yield* audio.analyser).peak, 0)
+      }).pipe(
+        Effect.scoped,
+        Effect.timeout("10 seconds"),
+        Effect.provide(AudioLive.pipe(Layer.provide(layer)))
+      )
+    }
+  )
 
   it.live("a paused voice renders silence and does not end, a resumed one plays", () => {
     const { layer, render } = makeOfflineContext(0.3)

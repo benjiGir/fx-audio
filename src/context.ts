@@ -73,6 +73,14 @@ export interface AudioListenerLike {
   setOrientation?(x: number, y: number, z: number, xUp: number, yUp: number, zUp: number): void
 }
 
+/** Reads the signal that passes through it, without changing it. */
+export interface AnalyserNodeLike extends AudioNodeLike {
+  fftSize: number
+  readonly frequencyBinCount: number
+  getByteFrequencyData(array: Uint8Array): void
+  getFloatTimeDomainData(array: Float32Array): void
+}
+
 /** The part of `HTMLAudioElement` the streaming path uses. */
 export interface MediaElementLike {
   src: string
@@ -98,6 +106,7 @@ export interface AudioContextLike {
   readonly listener: AudioListenerLike
   createBufferSource(): SourceNodeLike
   createGain(): GainNodeLike
+  createAnalyser(): AnalyserNodeLike
   createStereoPanner(): StereoPannerNodeLike
   createPanner(): PannerNodeLike
   createMediaElementSource(element: MediaElementLike): AudioNodeLike

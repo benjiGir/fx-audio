@@ -14,6 +14,26 @@ import * as Stream from 'effect/Stream';
 import { YieldableError } from 'effect/Cause';
 
 // @public
+export interface Analyser {
+    readonly level: Effect.Effect<number>;
+    readonly peak: Effect.Effect<number>;
+    readonly spectrum: Effect.Effect<Uint8Array>;
+    readonly waveform: Effect.Effect<Float32Array>;
+}
+
+// @public
+export interface AnalyserNodeLike extends AudioNodeLike {
+    // (undocumented)
+    fftSize: number;
+    // (undocumented)
+    readonly frequencyBinCount: number;
+    // (undocumented)
+    getByteFrequencyData(array: Uint8Array): void;
+    // (undocumented)
+    getFloatTimeDomainData(array: Float32Array): void;
+}
+
+// @public
 class Audio_2 extends Audio_base {}
 export { Audio_2 as Audio }
 
@@ -25,6 +45,8 @@ export interface AudioContextLike {
     addEventListener?(type: "statechange", listener: () => void): void;
     // (undocumented)
     close(): Promise<void>;
+    // (undocumented)
+    createAnalyser(): AnalyserNodeLike;
     // (undocumented)
     createBufferSource(): SourceNodeLike;
     // (undocumented)
@@ -120,6 +142,7 @@ export interface GainNodeLike extends AudioNodeLike {
 
 // @public
 export interface Group {
+    readonly analyser: Effect.Effect<Analyser>;
     readonly crossfade: (out: Voice, sound: Sound, over: Duration.Input, options?: PlayOptions) => Effect.Effect<Voice, never, Scope.Scope>;
     readonly fadeTo: (volume: number, over: Duration.Input) => Effect.Effect<void>;
     readonly mute: Effect.Effect<void>;
@@ -284,6 +307,7 @@ export class Vector3 extends Vector3_base {}
 
 // @public (undocumented)
 export interface Voice {
+    readonly analyser: Effect.Effect<Analyser>;
     readonly ended: Effect.Effect<void>;
     readonly events: Stream.Stream<VoiceEvent>;
     readonly fadeOut: (over: Duration.Input) => Effect.Effect<void>;

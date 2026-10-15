@@ -406,6 +406,25 @@ describe("promise facade on an asynchronous platform layer", () => {
     await audio.dispose()
   })
 
+  it("reads the level and spectrum of a voice and of a group", async () => {
+    const { ctx, audio } = setup()
+    const sound = new Sound({ buffer: { duration: 4 } as AudioBuffer, source: "a.wav" })
+    const voice = audio.play(sound)
+    const analyser = voice.analyser()
+    assert.strictEqual(voice.analyser(), analyser)
+    ctx.analysers[0]!.timeData = Float32Array.from({ length: 2048 }, () => 0.5)
+    ctx.analysers[0]!.frequencyData = Uint8Array.from([7])
+    assert.closeTo(analyser.level(), 0.5, 1e-6)
+    assert.closeTo(analyser.peak(), 0.5, 1e-6)
+    assert.strictEqual(analyser.spectrum()[0], 7)
+    assert.strictEqual(analyser.waveform().length, 2048)
+    const music = audio.group("music")
+    assert.strictEqual(music.analyser(), music.analyser())
+    assert.strictEqual(audio.analyser(), audio.master.analyser())
+    assert.strictEqual(ctx.analysers.length, 3)
+    await audio.dispose()
+  })
+
   it("on listens to one kind of event until the returned function is called", async () => {
     const { audio } = setup()
     const sound = new Sound({ buffer: { duration: 4 } as AudioBuffer, source: "a.wav" })

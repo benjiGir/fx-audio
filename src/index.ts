@@ -5,6 +5,7 @@
  */
 
 export type {
+  AnalyserNodeLike,
   AudioContextLike,
   AudioListenerLike,
   AudioNodeLike,
@@ -16,7 +17,7 @@ export type {
   StereoPannerNodeLike
 } from "./context.ts"
 export { AudioContextService, BrowserAudioContextLive } from "./context.ts"
-export type { Group, Listener, Voice } from "./core.ts"
+export type { Analyser, Group, Listener, Voice } from "./core.ts"
 export { Audio, AudioBrowserLive, AudioLive } from "./core.ts"
 export {
   DecodeFailure,

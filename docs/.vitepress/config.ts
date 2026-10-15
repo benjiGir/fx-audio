@@ -59,6 +59,7 @@ export default defineConfig({
             { text: "Controlling a voice", link: "/guide/voices" },
             { text: "Scheduling", link: "/guide/scheduling" },
             { text: "Groups and master", link: "/guide/groups" },
+            { text: "Level meters", link: "/guide/analyser" },
             { text: "Stereo pan", link: "/guide/pan" },
             { text: "3D position", link: "/guide/spatial" },
             { text: "Streaming", link: "/guide/streaming" },
