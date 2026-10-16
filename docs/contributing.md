@@ -57,6 +57,6 @@ Versions follow [Semantic Versioning](https://semver.org), and the public API is
 2. To release, run `pnpm changeset:version`. It consumes the changesets, bumps `package.json` and writes `CHANGELOG.md`.
    Edit the new section of the changelog if it needs context: it is the body of the GitHub release. Preview it with `pnpm release:notes`.
 3. Run `pnpm mutation` by hand, then open a pull request with the version bump and merge it.
-4. Run the **Release** workflow (Actions tab) with the version. It checks `package.json`, creates the tag `vX.Y.Z` and the GitHub release with the changelog section as notes.
+4. Run the **Release** workflow (Actions tab) with the version. It checks `package.json`, builds the package, creates the tag `vX.Y.Z` and the GitHub release with the changelog section as notes, and attaches the tarball `fx-audio-X.Y.Z.tgz` that users install from (see [Getting started](/guide/getting-started)). Run it again for a version already released and it only rebuilds the tarball from the tag and uploads it.
 
-Nothing publishes to npm yet: no workflow runs `changeset publish`, so a release is a tag and a GitHub release.
+Nothing publishes to npm yet: no workflow runs `changeset publish`, so a release is a tag, a GitHub release and a tarball.

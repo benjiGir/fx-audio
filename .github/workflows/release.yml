@@ -1,7 +1,9 @@
 name: Release
 
-# Creates the tag and the GitHub release of the version in package.json, with its CHANGELOG.md section as the notes.
-# Run it by hand once the "version" pull request is merged. It does not publish to npm.
+# Creates the tag and the GitHub release of the version in package.json, with its CHANGELOG.md section as the notes,
+# and attaches the package tarball (fx-audio-X.Y.Z.tgz) so the library can be installed without npm.
+# Run it by hand once the "version" pull request is merged. If the release already exists, only the tarball is (re)built
+# from the tagged commit and uploaded. It does not publish to npm.
 on:
   workflow_dispatch:
     inputs:
@@ -17,9 +19,19 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Use the tagged commit when the version is already tagged
+        run: |
+          if git rev-parse -q --verify "refs/tags/v${{ inputs.version }}" > /dev/null; then
+            git checkout "v${{ inputs.version }}"
+          fi
+      - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: pnpm
       - name: Check the version
         run: |
           current=$(node -p "require('./package.json').version")
@@ -27,14 +39,25 @@ jobs:
             echo "package.json is at $current, not ${{ inputs.version }}" >&2
             exit 1
           fi
-      - name: Write the release notes
-        run: node scripts/release-notes.mjs "${{ inputs.version }}" > "$RUNNER_TEMP/notes.md"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Pack the tarball
+        run: pnpm pack --pack-destination "$RUNNER_TEMP"
       - name: Create the tag and the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ inputs.version }}" \
-            --title "v${{ inputs.version }}" \
-            --notes-file "$RUNNER_TEMP/notes.md" \
-            --target "$GITHUB_SHA" \
-            --latest
+          if gh release view "v${{ inputs.version }}" > /dev/null 2>&1; then
+            echo "The release v${{ inputs.version }} exists already, only the tarball is uploaded."
+          else
+            node scripts/release-notes.mjs "${{ inputs.version }}" > "$RUNNER_TEMP/notes.md"
+            gh release create "v${{ inputs.version }}" \
+              --title "v${{ inputs.version }}" \
+              --notes-file "$RUNNER_TEMP/notes.md" \
+              --target "$GITHUB_SHA" \
+              --latest
+          fi
+      - name: Attach the tarball
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "v${{ inputs.version }}" "$RUNNER_TEMP/fx-audio-${{ inputs.version }}.tgz" --clobber

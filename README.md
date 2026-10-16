@@ -14,6 +14,22 @@ It aims to replace Howler.js with a smaller, faster, fully typed and thoroughly 
 
 Documentation: <https://benjigir.github.io/fx-audio/>
 
+## Install
+
+fx-audio is not on npm yet. Each [GitHub release](https://github.com/benjiGir/fx-audio/releases) carries the package as a tarball,
+which any package manager installs from its URL (here for 1.0.0, replace the version for another release):
+
+```sh
+pnpm add https://github.com/benjiGir/fx-audio/releases/download/v1.0.0/fx-audio-1.0.0.tgz effect
+npm install https://github.com/benjiGir/fx-audio/releases/download/v1.0.0/fx-audio-1.0.0.tgz effect
+yarn add https://github.com/benjiGir/fx-audio/releases/download/v1.0.0/fx-audio-1.0.0.tgz effect
+```
+
+Add `node-web-audio-api` to play or decode audio under Node, and `react` for the hooks if your app does not have it yet.
+The URL is written to your `package.json`, so a later `pnpm install` or `npm install` gets the same file. To upgrade, install the URL of the newer release.
+
+Do not install from the Git repository (`pnpm add github:benjiGir/fx-audio`): the build output is not committed, so the package would have no `dist/` folder.
+
 ## Requirements
 
 - ESM only, Node 22 or later.
