@@ -3,9 +3,31 @@
 fx-audio is ESM only and needs Node 22 or later. It has `effect` 4.x as a peer dependency, and
 `node-web-audio-api` as an optional peer dependency to play or decode audio under Node.
 
-```sh
-pnpm add fx-audio effect
+fx-audio is not on npm yet. Each [GitHub release](https://github.com/benjiGir/fx-audio/releases) carries the package as a tarball,
+which any package manager installs from its URL (here for 1.0.0, replace the version for another release):
+
+::: code-group
+
+```sh [pnpm]
+pnpm add https://github.com/benjiGir/fx-audio/releases/download/v1.0.0/fx-audio-1.0.0.tgz effect
 ```
+
+```sh [npm]
+npm install https://github.com/benjiGir/fx-audio/releases/download/v1.0.0/fx-audio-1.0.0.tgz effect
+```
+
+```sh [yarn]
+yarn add https://github.com/benjiGir/fx-audio/releases/download/v1.0.0/fx-audio-1.0.0.tgz effect
+```
+
+:::
+
+Add `node-web-audio-api` to play or decode audio under Node, and `react` for the hooks if your app does not have it yet.
+The URL is written to your `package.json`, so a later install gets the same file. To upgrade, install the URL of the newer release.
+
+::: warning Do not install from the Git repository
+`pnpm add github:benjiGir/fx-audio` does not work: the build output is not committed, so the package would have no `dist/` folder.
+:::
 
 ## Entry points
 
